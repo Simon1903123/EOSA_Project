@@ -42,13 +42,6 @@ In `shell.c` ci sono due funzioni:
 
 **Simboli del linker.** `_shell_stack_top` e gli altri sono indirizzi stabiliti dal linker script, non variabili. Per usarli in C vanno dichiarati con `extern`, come array, nello stesso modo dei simboli `_idle_` in `task.c`. Il nome di un array, usato da solo, vale il suo indirizzo. `_shell_data_load` è `const` perché indica una zona di FLASH, che si può solo leggere.
 
-**Puntatore o intero.** Tutti i simboli sono indirizzi. Il kernel li vuole però di due tipi diversi:
-
-- come puntatore (`uint32_t *`) quando deve leggere o scrivere in memoria a quell'indirizzo;
-- come intero (`uint32_t`) quando deve solo fare calcoli. Per passarli serve un cast: il valore resta uguale, cambia solo il tipo.
-
-Scrivere `*simbolo` non dà l'indirizzo: legge il contenuto della memoria a quell'indirizzo.
-
 | Parametro | Cosa si passa | Perché |
 |---|---|---|
 | `name` | `"shell"` | nome del task |
@@ -73,15 +66,6 @@ Per l'eco si usa `printf("%c", ch)`: se la UART non accetta subito tutti i byte,
 
 **`shell_main()`.** Ripete all'infinito: stampa `scratch> `, legge una riga, esegue il comando (tappa 3). Non deve mai terminare: se terminasse, il kernel chiuderebbe il task della shell per sempre.
 
-## 6. Errori da non ripetere
-
-- `#define` usato al posto di `#include`.
-- Prototipo della funzione scritto al posto della chiamata.
-- `*simbolo` usato per ottenere un indirizzo.
-- Cast `(uint32_t *)` dove serviva `(uint32_t)`.
-- Scrittura di `buf[32]` in un array da 32 elementi: gli indici validi vanno da 0 a 31.
-- Buffer dichiarato dentro `read_char()`: una variabile locale si perde quando la funzione termina.
-
-## 7. Prossimo passo — Tappa 3
+## 6. Prossimo passo — Tappa 3
 
 Riconoscere i comandi `help`, `ls` e `run <nome>`. Per ogni altro input: `error: unknown command`.
