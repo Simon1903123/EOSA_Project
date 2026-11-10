@@ -51,7 +51,100 @@ static int read_line(char *buf)
     }
 }
 
+static int str_eq(const char *a, const char *b)     // restituisce 1 se le stringhe sono uguali, 0 altrimenti
+{
+    while(*a && *b)
+    {
+        if (*a != *b)
+        {
+            return 0;              
+        }
+        a++;
+        b++;
+    }
+    return 1;
+}
 
+static int starts_with(const char *str, const char *prefix)  // restituisce 1 se str inizia con prefix, 0 altrimenti
+{
+    while (*prefix)
+    {
+        if (*str != *prefix)
+        {
+            return 0;              
+        }
+        str++;
+        prefix++;
+    }
+    return 1;                      
+}
+
+static void cmd_help(void)  // mostra i comandi disponibili
+{
+    printf("help - show commands\n");
+    printf("ls - list programs\n");
+    printf("run <name> - run a program\n");
+}
+
+
+static void cmd_run(const char *name)
+{
+    
+    /* int id = system_program_run(name);
+    if (id == -2)      { printf("error: program not found\n"); return; }
+    if (id == -3)      { printf("error: no free slot\n");      return; }
+    if (id < 0)        { printf("error: program cannot be loaded\n"); return; }
+    (void) system_program_wait(id); */   /* attende la fine del programma */
+}
+
+static void cmd_ls(void)  
+{
+    //char name[16];
+    int n = sys_image_count();
+    /*sys_image_count fa svc#11 richiamando in syscall.c task_image_count va in task.c per recuperare il n. di programmi caricati
+      verificando la validità dell'immagine di programma. Se l'immagine non è valida, restituisce -1.
+      Altrimenti, restituisce l'header dell'image contenendo i nomi programmi che successivamente dovrà essere utilizzato per ottenere i nomi.
+    */
+    if(n<0)
+    {
+        printf("error:no valid image\n");
+        return;
+    }
+    else
+    {
+        printf("Available programs:\n");
+        printf("%d programs found\n",n);
+    }
+    /*
+    for(int i=0;i<n;i++)
+    {
+        if(system_image_name((unsigned) i, name, sizeof name) == 0)
+        {
+            printf("%s\n",name);
+        }
+    } */
+}
+
+static void execute(const char *line)  // esegue il comando digitato
+{
+    if (str_eq(line, "help"))
+    {
+        cmd_help();
+    }
+    else if (str_eq(line, "ls"))
+    {
+        cmd_ls();
+    }
+    else if (starts_with(line, "run "))
+    {
+        const char *name = line + 4;  
+        cmd_run(name);
+    }
+    else
+    {
+        printf("error: unknown command\n");
+    }
+}
 
 static void shell_main(void)
 {
@@ -61,7 +154,7 @@ static void shell_main(void)
     {
         printf("scratch> ");        /* spazio finale, niente a capo */
         read_line(line);
-
+        execute(line);                   
         /* Tappa 3 */
     }
 }

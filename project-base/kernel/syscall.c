@@ -32,6 +32,7 @@
 #include "drivers/systick.h"
 #include "kernel/task.h"
 #include "kernel/trace.h"
+#include "kernel/kprintf.h"
 
 /* Every service has the same shape: up to three arguments (the
  * caller's r0, r1, r2) and one result (which becomes the caller's r0).
@@ -201,6 +202,20 @@ static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return (uint32_t) task_wait_program( a0, &frame[0] );
 }
 
+static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+{
+    (void) a0;
+    (void) a1;
+    (void) a2;
+    kprintf("sys_image_count_impl called\n");
+    return 1;
+    //return (uint32_t) task_image_count();         
+    /*task_image_count va in task.c per recuperare il n. di programmi caricati
+      verificando la validità dell'immagine di programma. Se l'immagine non è valida, restituisce -1.
+      Altrimenti, restituisce il numero di programmi caricati.
+    */
+}
+
 /* The dispatch table: table[n] is the function for service n.
  * The [SYS_WRITE] = ... form puts each entry at its number, whatever
  * the order of the lines. Entry 0 is left empty (0): it is not a
@@ -217,6 +232,7 @@ static const syscall_fn table[] = {
     [SYS_TRACE_DUMP]  = sys_trace_dump_impl,
     [SYS_TICK_COUNT]  = sys_tick_count_impl,
     [SYS_PROGRAM_WAIT] = sys_program_wait_impl,
+    [SYS_IMAGE_COUNT] = sys_image_count_impl,
 };
 
 /* How many entries the table has (here 11: numbers 0..10). */
