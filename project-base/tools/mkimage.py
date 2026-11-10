@@ -1,43 +1,18 @@
 #!/usr/bin/env python3
 """
-mkimage.py - impacchetta i programmi ELF in un'immagine IMG1 (versione BIG).
+mkimage.py - pack ELF programs into an IMG1 image (big version).
 
-Uso (lo stesso schema del Makefile della base):
+Usage (assignment section 6.3, exact form):
 
-    python3 tools/mkimage.py --output build/fs.img CARTELLA
+    python3 tools/mkimage.py image build/fs.img NAME=PROGRAM.elf [NAME=PROGRAM.elf ...]
 
-Lo script prende DA SOLO tutti i file *.axf contenuti nella cartella.
-Il nome del programma e' il nome del file senza ".axf"
-(print_plain.axf -> "print_plain"). I file sono presi in ordine alfabetico,
-cosi' l'immagine (e l'ordine di `ls`) e' sempre la stessa.
+NAME is the name the shell lists and `run` accepts. Each file is copied byte
+for byte, in the order given on the command line, and starts at a multiple of 4.
+The tool does not check that the files are valid ELF: the kernel does that (B1),
+and the test kit packs deliberately broken files on purpose.
 
-Cosa fa:
-    1. cerca i file *.axf nella cartella;
-    2. controlla nomi, quantita' e file leggibili;
-    3. calcola dove mettere ogni file dentro l'immagine;
-    4. costruisce l'immagine: header (20 byte) + directory (24 byte per
-       programma) + i file ELF copiati byte per byte, allineati a 4 byte;
-    5. rilegge l'immagine con le stesse regole che usera' il kernel (autocontrollo);
-    6. solo alla fine scrive il file di output.
-
-In caso di errore non viene scritto nessun file e lo script esce con stato 2
-(messaggio "mkimage.py: error: <motivo>" su stderr, come fa argparse).
-
-Formato IMG1 (tutti i numeri sono interi senza segno a 32 bit, little-endian):
-
-    HEADER (20 byte)
-      0..3    magic            "IMG1" (49 4d 47 31)
-      4..7    version          1
-      8..11   image_size       dimensione totale dell'immagine
-      12..15  count            numero di programmi (1..32)
-      16..19  directory_offset dove inizia la directory (sempre 20)
-
-    DIRECTORY (count voci da 24 byte)
-      0..15   name             nome + NUL, il resto a zero
-      16..19  offset           dove inizia il file ELF (multiplo di 4)
-      20..23  size             dimensione esatta del file ELF (>= 40)
-
-    FILE ELF, uno dopo l'altro, ciascuno che inizia a un indirizzo multiplo di 4.
+On any error nothing is written, the message is printed as
+"mkimage.py: error: <reason>" and the exit status is 2.
 """
 
 import argparse
@@ -47,142 +22,114 @@ import struct
 import sys
 
 # ---------------------------------------------------------------------------
-# Costanti del formato IMG1 (sezione 6.1 dell'assignment)
+# IMG1 format constants (assignment section 6.1)
 # ---------------------------------------------------------------------------
-IMG_MAGIC = b"IMG1"            # byte 49 4d 47 31
+IMG_MAGIC = b"IMG1"            # bytes 49 4d 47 31
 IMG_VERSION = 1
-HEADER_SIZE = 20               # dimensione dell'header
-ENTRY_SIZE = 24                # dimensione di una voce di directory
-NAME_FIELD_SIZE = 16           # 15 caratteri al massimo + NUL
+HEADER_SIZE = 20               # header size
+ENTRY_SIZE = 24                # one directory entry
+NAME_FIELD_SIZE = 16           # up to 15 characters + NUL
 MAX_PROGRAMS = 32
 MAX_IMAGE_SIZE = 0x00200000    # 2 MiB: 0x00200000..0x003fffff
-MIN_FILE_SIZE = 40             # ogni file nell'immagine ha almeno 40 byte
-ALIGNMENT = 4                  # ogni file inizia a un multiplo di 4
-PROGRAM_EXTENSION = ".axf"      # i programmi compilati sono file .axf (formato ELF)
+MIN_FILE_SIZE = 40             # every program file is at least 40 bytes
+ALIGNMENT = 4                  # every file starts at a multiple of 4
 
-# Nome valido: da 1 a 15 caratteri tra A-Z a-z 0-9 _ -
+# Valid name: 1 to 15 characters from A-Z a-z 0-9 _ -
 NAME_RE = re.compile(r"[A-Za-z0-9_-]{1,15}")
 
 
 def align_up(value, alignment=ALIGNMENT):
-    """Arrotonda 'value' per eccesso al multiplo di 'alignment'."""
+    """Round 'value' up to a multiple of 'alignment'."""
     return (value + alignment - 1) // alignment * alignment
 
 
 # ---------------------------------------------------------------------------
-# Passo 1: ricerca dei programmi nella cartella
+# Step 1: read NAME=PATH arguments and the files they point to
 # ---------------------------------------------------------------------------
-def scan_directory(parser, directory):
+def read_programs(parser, specs):
     """
-    Prende tutti i file *.axf direttamente dentro 'directory' (senza entrare
-    nelle sottocartelle). Il nome del programma e' il nome del file senza
-    ".axf". Restituisce [(nome, percorso), ...] in ordine alfabetico.
-    """
-    if not os.path.isdir(directory):
-        parser.error("'%s' is not a directory" % directory)
-    try:
-        filenames = sorted(os.listdir(directory))    # sorted: ordine sempre uguale
-    except OSError as exc:
-        parser.error("cannot read directory '%s': %s" % (directory, exc.strerror))
-
-    pairs = []
-    for filename in filenames:
-        if filename.startswith("."):                 # file nascosti: ignorati
-            continue
-        stem, extension = os.path.splitext(filename)
-        if extension != PROGRAM_EXTENSION:               # .c, .o, .map, ... : ignorati
-            continue
-        path = os.path.join(directory, filename)
-        if not os.path.isfile(path):                 # una cartella chiamata x.axf
-            continue
-        pairs.append((stem, path))
-
-    if not pairs:
-        parser.error(
-            "no %s files found in '%s' (this folder must contain the compiled "
-            "programs, not the .c sources)" % (PROGRAM_EXTENSION, directory)
-        )
-    return pairs
-
-
-# ---------------------------------------------------------------------------
-# Passo 2: controllo dei nomi e lettura dei file
-# ---------------------------------------------------------------------------
-def load_entries(parser, pairs):
-    """
-    Controlla ogni (nome, percorso) e legge il file. Restituisce una lista di
-    (nome, byte_del_file). Ogni problema viene segnalato con parser.error(),
-    che stampa "mkimage.py: error: <motivo>" ed esce con stato 2.
+    Return [(name, file_bytes), ...] in command-line order. Every problem is
+    reported with parser.error() before anything is written.
     """
     entries = []
-    for name, path in pairs:
-        # I nomi sono unici perche' vengono da file diversi della stessa
-        # cartella, quindi non serve controllare i duplicati.
+    seen = set()
+    for spec in specs:
+        name, separator, path = spec.partition("=")
+        if not separator or not name or not path:
+            parser.error("'%s': expected NAME=PROGRAM.elf" % spec)
         if not NAME_RE.fullmatch(name):
             parser.error(
-                "invalid program name '%s' (file '%s'): use 1 to 15 characters "
-                "from A-Z a-z 0-9 _ -" % (name, path)
+                "invalid program name '%s': use 1 to 15 characters from "
+                "A-Z a-z 0-9 _ -" % name
             )
+        if name in seen:
+            parser.error("duplicate program name '%s'" % name)
+        seen.add(name)
+
+        if not os.path.isfile(path):
+            parser.error("cannot read '%s': no such file" % path)
         try:
             with open(path, "rb") as f:
                 data = f.read()
         except OSError as exc:
             parser.error("cannot read '%s': %s" % (path, exc.strerror))
 
-        # Nota: NON controlliamo che sia un ELF valido. Il kernel deve
-        # controllarlo da solo (B1), e i test del kit mettono nell'immagine
-        # anche file volutamente rotti.
+        # Not checked here on purpose: the kernel validates the ELF (B1).
         if len(data) < MIN_FILE_SIZE:
             parser.error(
                 "'%s' is too small (%d bytes, at least %d required)"
                 % (path, len(data), MIN_FILE_SIZE)
             )
         entries.append((name, data))
+
+    if len(entries) > MAX_PROGRAMS:
+        parser.error("too many programs: %d (maximum is %d)"
+                     % (len(entries), MAX_PROGRAMS))
     return entries
 
 
 # ---------------------------------------------------------------------------
-# Passo 3 e 4: calcolo del layout e costruzione dell'immagine
+# Steps 2 and 3: layout and image construction
 # ---------------------------------------------------------------------------
 def build_image(entries):
-    """Restituisce l'immagine completa (bytearray). ValueError se e' troppo grande."""
+    """Return the whole image as a bytearray. ValueError if it is too large."""
     count = len(entries)
-    directory_offset = HEADER_SIZE                       # la directory e' sempre a 20
+    directory_offset = HEADER_SIZE                       # always 20
     directory_end = directory_offset + count * ENTRY_SIZE
-    contents_start = align_up(directory_end)             # qui puo' iniziare il primo file
+    contents_start = align_up(directory_end)
 
-    # 3) Dove va ogni file: uno dopo l'altro, ognuno allineato a 4.
+    # Each file goes right after the previous one, aligned to 4.
     offsets = []
     cursor = contents_start
     for _name, data in entries:
         offsets.append(cursor)
         cursor = align_up(cursor + len(data))
 
-    # image_size = fine dell'ULTIMO file (senza il padding finale)
+    # image_size ends with the last file, without trailing padding.
     image_size = offsets[-1] + len(entries[-1][1])
     if image_size > MAX_IMAGE_SIZE:
         raise ValueError(
-            "image too large: %d bytes (maximum is %d)" % (image_size, MAX_IMAGE_SIZE)
+            "image too large: %d bytes (maximum is %d)"
+            % (image_size, MAX_IMAGE_SIZE)
         )
 
-    # 4) Immagine tutta a zero: cosi' il padding e i byte dopo il NUL dei nomi
-    #    sono gia' zero senza doverli scrivere.
+    # All zeros: padding and the bytes after each name's NUL are already 0.
     image = bytearray(image_size)
 
-    # Header (20 byte)
+    # Header (20 bytes)
     struct.pack_into(
         "<4sIIII", image, 0,
         IMG_MAGIC, IMG_VERSION, image_size, count, directory_offset,
     )
 
-    # Directory (24 byte per voce). "16s" riempie con NUL i byte mancanti del nome.
+    # Directory (24 bytes per entry); "16s" pads the name with NUL bytes.
     for index, ((name, data), offset) in enumerate(zip(entries, offsets)):
         struct.pack_into(
             "<16sII", image, directory_offset + index * ENTRY_SIZE,
             name.encode("ascii"), offset, len(data),
         )
 
-    # File ELF copiati byte per byte, senza nessuna modifica.
+    # Program files, copied byte for byte.
     for (_name, data), offset in zip(entries, offsets):
         image[offset:offset + len(data)] = data
 
@@ -190,15 +137,16 @@ def build_image(entries):
 
 
 # ---------------------------------------------------------------------------
-# Passo 5: autocontrollo (le stesse regole che applichera' il kernel in C)
+# Step 4: self-check with the same rules the kernel will apply
 # ---------------------------------------------------------------------------
 def verify_image(image):
-    """Rilegge l'immagine come farebbe il kernel. ValueError se una regola e' violata."""
+    """Re-read the image as the kernel does. ValueError if a rule is broken."""
     total = len(image)
     if total < HEADER_SIZE:
         raise ValueError("image shorter than the header")
 
-    magic, version, image_size, count, dir_off = struct.unpack_from("<4sIIII", image, 0)
+    magic, version, image_size, count, dir_off = struct.unpack_from(
+        "<4sIIII", image, 0)
 
     if magic != IMG_MAGIC:
         raise ValueError("bad magic")
@@ -253,14 +201,13 @@ def verify_image(image):
 
 
 # ---------------------------------------------------------------------------
-# Passo 6: scrittura del file di output
+# Step 5: write the output (temporary file first, then rename)
 # ---------------------------------------------------------------------------
 def write_output(parser, output, image):
-    """Scrive l'immagine. Prima su un file temporaneo, poi lo rinomina."""
     try:
         out_dir = os.path.dirname(output)
         if out_dir:
-            os.makedirs(out_dir, exist_ok=True)      # crea build/ se manca
+            os.makedirs(out_dir, exist_ok=True)      # creates build/ if missing
         tmp_path = output + ".tmp"
         with open(tmp_path, "wb") as f:
             f.write(image)
@@ -270,24 +217,21 @@ def write_output(parser, output, image):
 
 
 # ---------------------------------------------------------------------------
-# Programma principale
+# Main
 # ---------------------------------------------------------------------------
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="mkimage.py",
-        description="Pack the .axf programs of a directory into an IMG1 image.",
+        description="Pack ELF programs into an IMG1 image.",
     )
-    parser.add_argument("--output", required=True, metavar="OUTPUT",
-                        help="output image, e.g. build/fs.img")
-    parser.add_argument("directory", metavar="DIRECTORY",
-                        help="folder containing the compiled .axf programs")
+    parser.add_argument("command", choices=["image"])
+    parser.add_argument("output", metavar="OUTPUT",
+                        help="image file to write, e.g. build/fs.img")
+    parser.add_argument("programs", metavar="NAME=PROGRAM.elf", nargs="+",
+                        help="program name and its ELF file")
     args = parser.parse_args(argv)
 
-    # Tutti i controlli avvengono PRIMA di scrivere qualsiasi output.
-    pairs = scan_directory(parser, args.directory)
-    if len(pairs) > MAX_PROGRAMS:
-        parser.error("too many programs: %d (maximum is %d)" % (len(pairs), MAX_PROGRAMS))
-    entries = load_entries(parser, pairs)
+    entries = read_programs(parser, args.programs)
 
     try:
         image = build_image(entries)
@@ -297,11 +241,12 @@ def main(argv=None):
     try:
         verify_image(image)
     except ValueError as exc:
-        # Non dovrebbe mai succedere: se succede, c'e' un bug in questo script.
+        # Should never happen: if it does, this script has a bug.
         sys.exit("mkimage.py: internal error: %s" % exc)
 
     write_output(parser, args.output, image)
-    print("IMG1: %s (%d bytes, %d programs)" % (args.output, len(image), len(entries)))
+    print("IMG1: %s (%d bytes, %d programs)"
+          % (args.output, len(image), len(entries)))
 
 
 if __name__ == "__main__":
