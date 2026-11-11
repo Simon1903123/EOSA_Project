@@ -230,4 +230,3 @@ c4 e6 0a 00   dimensione totale (qui 714436; dipende dal compilatore)
 09 00 00 00   9 programmi
 14 00 00 00   la directory inizia a 20
 ```
-
