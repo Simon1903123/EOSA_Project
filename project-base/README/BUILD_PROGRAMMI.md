@@ -32,7 +32,7 @@ I punti 1–3 sono descritti in questo file. I punti 4–6 sono del kernel (shel
 
 **Sorgenti del test kit.** I 9 file `.c` sono quelli del prof, byte per byte. Il test confronta l'output carattere per carattere, quindi non vanno toccati.
 
-**Libreria.** `programs/lib/` è una copia di `lib/` della base. È una copia, e non lo stesso file del kernel, perché un programma non può usare codice del kernel: deve contenere la sua versione. Unica differenza: da `printf.c` sono state tolte `sleep_ms` e `spin_ticks`, che nessun programma usa (sezione 6).
+**Libreria.** `programs/lib/` è una copia di `lib/` della base. È una copia, e non lo stesso file del kernel, perché un programma non può usare codice del kernel: deve contenere la sua versione. I file sono identici a quelli della base.
 
 ## 4. Come è fatto un programma in memoria
 
@@ -64,9 +64,9 @@ SECTIONS
 |---|---|---|
 | `0x000` | `_start` | `user_start.s` |
 | `0x00a` | stub delle system call (`sys_write`, `sys_exit`, …) | `lib/syscalls.s` |
-| `0x048` | `printf` | `lib/printf.c` |
-| `0x0e4` | `vformat`, `utoa_…` | `lib/format.c` |
-| `0x280` | `main` | `wx_write_code.c` |
+| `0x048` | `printf`, `sleep_ms`, `spin_ticks` | `lib/printf.c` |
+| `0x118` | `vformat`, `utoa_…` | `lib/format.c` |
+| `0x2b4` | `main` | `wx_write_code.c` |
 
 L'ordine è quello in cui i file sono passati al linker: prima il runtime, poi il programma.
 
@@ -152,14 +152,11 @@ Il programma `wx_write_code` prova a scrivere sopra `main`, cioè nel proprio co
 MemManage in loaded program: CFSR=0x82 address=<CODE_ADDRESS>
 ```
 
-Quell'indirizzo dipende da dove il linker mette `main`, cioè dall'ordine dei file e dalla dimensione del runtime. Per questo il test kit aggiornato non chiede un valore preciso: accetta qualunque indirizzo pari di 8 cifre esadecimali nello slot 0, tra `0x20002000` e `0x20002fff`. La prima versione del test kit chiedeva esattamente `0x20002280`.
+Quell'indirizzo dipende da dove il linker mette `main`, cioè dall'ordine dei file e dalla dimensione del runtime. Per questo il test kit non chiede un valore preciso: accetta qualunque indirizzo pari di 8 cifre esadecimali nello slot 0, tra `0x20002000` e `0x20002fff`.
 
-Nel nostro build `main` è all'offset `0x280`, quindi il kernel stamperà `0x20002280`, che va bene con entrambe le versioni. Ci si arriva con due scelte, fatte quando il test chiedeva ancora il valore esatto:
+Nel nostro build il runtime viene prima del programma, e `main` è all'offset `0x2b4`. Il kernel stamperà quindi `address=0x200022b4`, che è pari e dentro l'intervallo.
 
-1. **Il runtime prima del programma.** Con il sorgente del programma come primo file passato al linker, `main` finirebbe a `0x0`.
-2. **Niente `sleep_ms` e `spin_ticks`.** La `printf.c` della base le contiene. Il linker include tutto un file oggetto, anche le funzioni non usate: le due funzioni occupavano 52 byte (`0x34`) prima di `main`, che finiva a `0x2b4`. Nessun programma del test le usa, quindi sono state tolte dalla copia in `programs/lib/`.
-
-Con il test kit aggiornato nessuna delle due è più obbligatoria, ma non danno problemi e rendono il programma un po' più piccolo.
+La prima versione del test kit chiedeva invece esattamente `0x20002280`. Per ottenerlo avevamo tolto `sleep_ms` e `spin_ticks` dalla copia di `printf.c` (52 byte prima di `main`). Con il test kit aggiornato non serve più, e la libreria è tornata identica a quella della base: così chi scrive un programma per la demo può usare anche `sleep_ms`.
 
 ## 7. Cosa trova il loader nell'ELF
 
@@ -171,7 +168,7 @@ Con il test kit aggiornato nessuna delle due è più obbligatoria, ma non danno 
 | sezioni caricate | `.text` (codice e costanti), `.data`, `.bss` |
 | rilocazioni | in `.rel.text`, formato `REL` (niente `RELA`) |
 | tipi di rilocazione | `R_ARM_ABS32`, `R_ARM_THM_CALL`, `R_ARM_THM_JUMP24` |
-| dimensione in RAM | da 700 a 820 byte per programma (il limite è 3072) |
+| dimensione in RAM | da 752 a 872 byte per programma (il limite è 3072) |
 
 **I tre tipi di rilocazione.**
 
@@ -234,41 +231,3 @@ c4 e6 0a 00   dimensione totale (qui 714436; dipende dal compilatore)
 14 00 00 00   la directory inizia a 20
 ```
 
-## 9. Come provarlo
-
-```bash
-cd project-base
-make programs                                                     # 9 file in build/programs/
-arm-none-eabi-nm -u build/programs/*.elf                          # vuoto: nessun simbolo mancante
-arm-none-eabi-size build/programs/*.elf                           # text + data + bss sotto 3072
-arm-none-eabi-nm build/programs/wx_write_code.elf | grep " main$"  # 00000280 T main (dentro lo slot)
-make image                                                        # IMG1: build/fs.img (... 9 programs)
-xxd -l 20 build/fs.img                                            # inizia con 49 4d 47 31
-```
-
-**I test pubblici non usano `build/fs.img`.** Il test kit costruisce una sua immagine a partire dai nostri ELF, aggiungendo i file rovinati:
-
-```bash
-python3 TEST_KIT/big/generate_fixtures.py \
-  --output-dir build/test-kit/big/files --image build/test-kit/big/fs.img \
-  print_plain=build/programs/print_plain.elf global_state=build/programs/global_state.elf \
-  thumb_ptr=build/programs/thumb_ptr.elf nonzero_slot=build/programs/nonzero_slot.elf \
-  normal_return=build/programs/normal_return.elf explicit_exit=build/programs/explicit_exit.elf \
-  kernel_store=build/programs/kernel_store.elf wx_write_code=build/programs/wx_write_code.elf \
-  wx_exec_data=build/programs/wx_exec_data.elf
-
-python3 TEST_KIT/run_tests.py --suite big \
-  --kernel build/scratch-os.axf --image build/test-kit/big/fs.img
-```
-
-`TEST_KIT` è la cartella `test-kit` del materiale del corso, nella versione aggiornata. Il generatore accetta i nostri ELF senza errori. `build/fs.img` serve invece per `make run` e per la demo.
-
-## 10. Stato attuale e prossimi passi
-
-**Fatto.** `make programs` e `make image` funzionano. Gli ELF rispettano la specifica: tipo `ET_EXEC`, indirizzo `0`, entry Thumb, solo rilocazioni `REL` dei tre tipi ammessi, nessun simbolo mancante. `main` di `wx_write_code` è a `0x280`, dentro l'intervallo accettato dal test.
-
-**Prossimi passi.**
-
-1. Aggiungere un a capo alla fine di `user_start.s`: senza, l'assembler stampa un warning (non cambia il codice).
-2. Aggiungere un target `make test` che lanci il generatore e `run_tests.py` con un solo comando.
-3. Quando shell, SVC 11–13 e loader saranno pronti, lanciare i test con il test kit aggiornato.
