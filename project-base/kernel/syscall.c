@@ -34,8 +34,7 @@
 #include "kernel/trace.h"
 extern uint32_t __fs_image_start;
 
-struct img_header
-{
+struct img_header {
     uint32_t magic;
     uint32_t version;
     uint32_t image_size;
@@ -43,8 +42,7 @@ struct img_header
     uint32_t directory_offset;
 };
 
-struct img_dirent
-{
+struct img_dirent {
     char name[16];
     uint32_t offset;
     uint32_t size;

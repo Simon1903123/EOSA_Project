@@ -44,8 +44,7 @@ void write_all( const char *buf, unsigned len )
 }
 
 /* What printf's output function needs to remember between characters. */
-struct printf_ctx
-{
+struct printf_ctx {
     char buf[PRINTF_BUF_SIZE];  /* characters not sent yet */
     unsigned used;              /* how many of buf are in use */
     int total;                  /* characters produced so far */

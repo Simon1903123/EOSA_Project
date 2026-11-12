@@ -18,8 +18,7 @@
 #include "kernel/kprintf.h"
 
 /* One task switch. */
-struct trace_record
-{
+struct trace_record {
     uint32_t tick;      /* the tick at which the switch happened */
     uint8_t from;       /* index in the task table of the task that stopped */
     uint8_t to;         /* index in the task table of the task that starts */

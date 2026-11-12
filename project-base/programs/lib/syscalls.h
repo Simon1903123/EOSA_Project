@@ -27,25 +27,25 @@
  * a number here, change it there too. The
  * compiler cannot check this for you: the two files are never
  * compiled together. */
-#define SYS_WRITE  1    /* send bytes to the console */
-#define SYS_READ   2    /* take one received byte, if any */
+#define SYS_WRITE 1    /* send bytes to the console */
+#define SYS_READ 2    /* take one received byte, if any */
 #define SYS_UPTIME 3    /* milliseconds since start */
-#define SYS_EXIT   4    /* the calling task is finished */
+#define SYS_EXIT 4    /* the calling task is finished */
 /* Kernel only: main() uses it once to start the first task. If a task
  * tries it, the kernel answers -1. */
 #define SYS_START_TASKS 5
 /* Week 5: the scheduler services. */
-#define SYS_YIELD       6   /* give the rest of the time slice to another task */
-#define SYS_DELAY       7   /* block for a number of ticks */
+#define SYS_YIELD 6   /* give the rest of the time slice to another task */
+#define SYS_DELAY 7   /* block for a number of ticks */
 #define SYS_DELAY_UNTIL 8   /* block until an absolute tick (periodic tasks) */
 /* Print the recorded task switches and a Gantt chart (kernel/trace.c). */
 #define SYS_TRACE_DUMP 9
 #define SYS_TICK_COUNT 10  /* ticks since the scheduler started */
 /* Project loader contract. The base exports stubs only: kernel support
  * is intentionally part of the project implementation. */
-#define SYS_IMAGE_COUNT  11 /* number of directory entries in fs.img */
-#define SYS_IMAGE_NAME   12 /* copy one directory entry's name */
-#define SYS_PROGRAM_RUN  13 /* load/start a named program; return task id */
+#define SYS_IMAGE_COUNT 11 /* number of directory entries in fs.img */
+#define SYS_IMAGE_NAME 12 /* copy one directory entry's name */
+#define SYS_PROGRAM_RUN 13 /* load/start a named program; return task id */
 #define SYS_PROGRAM_WAIT 14 /* wait for a loaded task to finish */
 
 /* Offer len bytes of buf for sending. Returns how many bytes the kernel

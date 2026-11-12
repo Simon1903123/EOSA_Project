@@ -57,7 +57,7 @@ struct tcb tasks[NUM_TASKS] = {
 };
 
 #define NUM_APP_TASKS ( NUM_TASKS - 1 )
-#define IDLE_TCB      ( &tasks[IDLE_TASK_INDEX] )
+#define IDLE_TCB ( &tasks[IDLE_TASK_INDEX] )
 
 /* See kernel/task.h. */
 struct tcb *tcb_current = 0;

@@ -31,16 +31,16 @@
 /* Position of each device interrupt in the NVIC (0 = first device line).
  * The vector table entry is isr_vector[16 + N]. Numbers follow the AN385
  * board map and were checked on QEMU. */
-#define UART0RX_IRQn   0   /* UART0 received a byte */
-#define UART0TX_IRQn   1   /* UART0 finished sending a byte */
-#define UART1RX_IRQn   2   /* UART1 received a byte */
-#define UART1TX_IRQn   3   /* UART1 finished sending a byte */
-#define UART2RX_IRQn   4   /* UART2 received a byte */
-#define UART2TX_IRQn   5   /* UART2 finished sending a byte */
-#define TIMER0_IRQn    8   /* APB timer 0 reached zero */
-#define TIMER1_IRQn    9   /* APB timer 1 reached zero */
+#define UART0RX_IRQn 0   /* UART0 received a byte */
+#define UART0TX_IRQn 1   /* UART0 finished sending a byte */
+#define UART1RX_IRQn 2   /* UART1 received a byte */
+#define UART1TX_IRQn 3   /* UART1 finished sending a byte */
+#define UART2RX_IRQn 4   /* UART2 received a byte */
+#define UART2TX_IRQn 5   /* UART2 finished sending a byte */
+#define TIMER0_IRQn 8   /* APB timer 0 reached zero */
+#define TIMER1_IRQn 9   /* APB timer 1 reached zero */
 #define DUALTIMER_IRQn 10  /* dual timer */
-#define UARTOVF_IRQn   12  /* combined UART overflow (documented; QEMU never raises it) */
+#define UARTOVF_IRQn 12  /* combined UART overflow (documented; QEMU never raises it) */
 /* The watchdog is not an IRQ line: its interrupt arrives as NMI. */
 
 /* ==================================================================== */
@@ -58,8 +58,8 @@ typedef struct
 /* Cast the architectural base address to a pointer to the struct. */
 #define SysTick ( (SysTick_TypeDef *) 0xE000E010UL )
 
-#define SysTick_CTRL_ENABLE    ( 1UL << 0 )  /* start the counter */
-#define SysTick_CTRL_TICKINT   ( 1UL << 1 )  /* raise the SysTick exception on wrap */
+#define SysTick_CTRL_ENABLE ( 1UL << 0 )  /* start the counter */
+#define SysTick_CTRL_TICKINT ( 1UL << 1 )  /* raise the SysTick exception on wrap */
 #define SysTick_CTRL_CLKSOURCE ( 1UL << 2 )  /* 1 = core clock, 0 = reference clock */
 #define SysTick_CTRL_COUNTFLAG ( 1UL << 16 ) /* 1 if the counter wrapped since the last read */
 
@@ -130,33 +130,33 @@ typedef struct
  * least urgent value (0xE0), so it runs only after every other
  * exception has finished. In SHPR3 the PendSV byte starts at bit 16. */
 #define SCB_SHPR3_PENDSV_SHIFT 16            /* bit position of the PendSV byte in SHPR3 */
-#define SCB_SHPR3_ADDR         0xE000ED20UL  /* address of SHPR3 */
+#define SCB_SHPR3_ADDR 0xE000ED20UL  /* address of SHPR3 */
 
 /* SHPR index = exception number - 4. SVCall is exception 11, SysTick 15. */
-#define SCB_SHPR_SVCALL  7   /* SHPR[7]  priority of SVCall */
-#define SCB_SHPR_PENDSV  10  /* SHPR[10] priority of PendSV */
+#define SCB_SHPR_SVCALL 7   /* SHPR[7]  priority of SVCall */
+#define SCB_SHPR_PENDSV 10  /* SHPR[10] priority of PendSV */
 #define SCB_SHPR_SYSTICK 11  /* SHPR[11] priority of SysTick */
 
 #define SCB_CCR_UNALIGN_TRP ( 1UL << 3 )  /* fault on unaligned access */
-#define SCB_CCR_DIV_0_TRP   ( 1UL << 4 )  /* fault on divide by zero */
+#define SCB_CCR_DIV_0_TRP ( 1UL << 4 )  /* fault on divide by zero */
 
 #define SCB_SHCSR_MEMFAULTENA ( 1UL << 16 ) /* enable the MemManage fault handler */
 #define SCB_SHCSR_BUSFAULTENA ( 1UL << 17 ) /* enable the BusFault handler */
 #define SCB_SHCSR_USGFAULTENA ( 1UL << 18 ) /* enable the UsageFault handler */
 
 #define SCB_HFSR_VECTTBL ( 1UL << 1 )  /* fault while reading the vector table */
-#define SCB_HFSR_FORCED  ( 1UL << 30 ) /* a configurable fault escalated to HardFault */
+#define SCB_HFSR_FORCED ( 1UL << 30 ) /* a configurable fault escalated to HardFault */
 
-#define SCB_CFSR_IACCVIOL   ( 1UL << 0 )  /* MemManage: instruction fetch not allowed */
-#define SCB_CFSR_DACCVIOL   ( 1UL << 1 )  /* MemManage: data access not allowed */
-#define SCB_CFSR_MUNSTKERR  ( 1UL << 3 )  /* MemManage: fault while unstacking on exception return */
-#define SCB_CFSR_MSTKERR    ( 1UL << 4 )  /* MemManage: fault while stacking on exception entry */
-#define SCB_CFSR_MMARVALID  ( 1UL << 7 )  /* MMFAR holds a valid address */
-#define SCB_CFSR_IBUSERR    ( 1UL << 8 )  /* BusFault: instruction fetch error */
-#define SCB_CFSR_PRECISERR  ( 1UL << 9 )  /* BusFault: precise data access error */
+#define SCB_CFSR_IACCVIOL ( 1UL << 0 )  /* MemManage: instruction fetch not allowed */
+#define SCB_CFSR_DACCVIOL ( 1UL << 1 )  /* MemManage: data access not allowed */
+#define SCB_CFSR_MUNSTKERR ( 1UL << 3 )  /* MemManage: fault while unstacking on exception return */
+#define SCB_CFSR_MSTKERR ( 1UL << 4 )  /* MemManage: fault while stacking on exception entry */
+#define SCB_CFSR_MMARVALID ( 1UL << 7 )  /* MMFAR holds a valid address */
+#define SCB_CFSR_IBUSERR ( 1UL << 8 )  /* BusFault: instruction fetch error */
+#define SCB_CFSR_PRECISERR ( 1UL << 9 )  /* BusFault: precise data access error */
 #define SCB_CFSR_UNDEFINSTR ( 1UL << 16 ) /* UsageFault: undefined instruction */
-#define SCB_CFSR_INVSTATE   ( 1UL << 17 ) /* UsageFault: bad EPSR state (e.g. ARM mode) */
-#define SCB_CFSR_DIVBYZERO  ( 1UL << 25 ) /* UsageFault: divide by zero */
+#define SCB_CFSR_INVSTATE ( 1UL << 17 ) /* UsageFault: bad EPSR state (e.g. ARM mode) */
+#define SCB_CFSR_DIVBYZERO ( 1UL << 25 ) /* UsageFault: divide by zero */
 
 _Static_assert( offsetof( SCB_TypeDef, ICSR ) == 0x04, "SCB ICSR offset" );
 _Static_assert( offsetof( SCB_TypeDef, VTOR ) == 0x08, "SCB VTOR offset" );
@@ -183,22 +183,22 @@ typedef struct
 
 #define MPU ( (MPU_TypeDef *) 0xE000ED90UL )
 
-#define MPU_CTRL_ENABLE     ( 1UL << 0 )  /* the MPU checks every access */
+#define MPU_CTRL_ENABLE ( 1UL << 0 )  /* the MPU checks every access */
 #define MPU_CTRL_PRIVDEFENA ( 1UL << 2 )  /* privileged code also gets the default memory map */
 
 #define MPU_RBAR_REGION_MASK ( 0xFUL )     /* bits 3:0: region number (used when VALID is set) */
-#define MPU_RBAR_VALID       ( 1UL << 4 )  /* write RBAR with the region number inside, skip RNR */
+#define MPU_RBAR_VALID ( 1UL << 4 )  /* write RBAR with the region number inside, skip RNR */
 
-#define MPU_RASR_ENABLE          ( 1UL << 0 )  /* this region is active */
-#define MPU_RASR_SIZE( n )       ( ( ( n ) - 1UL ) << 1 ) /* region size = 2^n bytes (n = 5 for 32 B, 12 for 4 KB) */
-#define MPU_RASR_B               ( 1UL << 16 ) /* bufferable */
-#define MPU_RASR_C               ( 1UL << 17 ) /* cacheable */
-#define MPU_RASR_S               ( 1UL << 18 ) /* shareable */
-#define MPU_RASR_AP( v )         ( (uint32_t) ( v ) << 24 ) /* access permissions, 3 bits */
-#define MPU_RASR_XN              ( 1UL << 28 ) /* execute never: no instruction fetch from here */
+#define MPU_RASR_ENABLE ( 1UL << 0 )  /* this region is active */
+#define MPU_RASR_SIZE( n ) ( ( ( n ) - 1UL ) << 1 ) /* region size = 2^n bytes (n = 5 for 32 B, 12 for 4 KB) */
+#define MPU_RASR_B ( 1UL << 16 ) /* bufferable */
+#define MPU_RASR_C ( 1UL << 17 ) /* cacheable */
+#define MPU_RASR_S ( 1UL << 18 ) /* shareable */
+#define MPU_RASR_AP( v ) ( (uint32_t) ( v ) << 24 ) /* access permissions, 3 bits */
+#define MPU_RASR_XN ( 1UL << 28 ) /* execute never: no instruction fetch from here */
 #define MPU_AP_PRIV_RW_USER_NONE 1UL          /* AP=001: privileged read/write, unprivileged no access */
-#define MPU_AP_FULL_RW           3UL          /* AP=011: read/write for everyone */
-#define MPU_AP_RO                6UL          /* AP=110: read only for everyone */
+#define MPU_AP_FULL_RW 3UL          /* AP=011: read/write for everyone */
+#define MPU_AP_RO 6UL          /* AP=110: read only for everyone */
 
 _Static_assert( offsetof( MPU_TypeDef, TYPE ) == 0x00, "MPU TYPE offset" );
 _Static_assert( offsetof( MPU_TypeDef, CTRL ) == 0x04, "MPU CTRL offset" );
@@ -228,15 +228,15 @@ typedef struct
 #define UART_STATE_TXOR ( 1UL << 2 ) /* send overrun (write one to clear) */
 #define UART_STATE_RXOR ( 1UL << 3 ) /* receive overrun (write one to clear) */
 
-#define UART_CTRL_TXEN      ( 1UL << 0 ) /* enable the transmitter */
-#define UART_CTRL_RXEN      ( 1UL << 1 ) /* enable the receiver */
-#define UART_CTRL_TXIRQEN   ( 1UL << 2 ) /* IRQ when a byte has been sent */
-#define UART_CTRL_RXIRQEN   ( 1UL << 3 ) /* IRQ when a byte has arrived */
+#define UART_CTRL_TXEN ( 1UL << 0 ) /* enable the transmitter */
+#define UART_CTRL_RXEN ( 1UL << 1 ) /* enable the receiver */
+#define UART_CTRL_TXIRQEN ( 1UL << 2 ) /* IRQ when a byte has been sent */
+#define UART_CTRL_RXIRQEN ( 1UL << 3 ) /* IRQ when a byte has arrived */
 #define UART_CTRL_TXORIRQEN ( 1UL << 4 ) /* IRQ on send overrun */
 #define UART_CTRL_RXORIRQEN ( 1UL << 5 ) /* IRQ on receive overrun */
 
-#define UART_INT_TX   ( 1UL << 0 ) /* send interrupt pending; write 1 to clear */
-#define UART_INT_RX   ( 1UL << 1 ) /* receive interrupt pending; write 1 to clear */
+#define UART_INT_TX ( 1UL << 0 ) /* send interrupt pending; write 1 to clear */
+#define UART_INT_RX ( 1UL << 1 ) /* receive interrupt pending; write 1 to clear */
 #define UART_INT_TXOR ( 1UL << 2 ) /* send overrun interrupt pending */
 #define UART_INT_RXOR ( 1UL << 3 ) /* receive overrun interrupt pending */
 
@@ -261,10 +261,10 @@ typedef struct
 #define CMSDK_TIMER0 ( (CMSDK_TIMER_TypeDef *) 0x40000000UL )
 #define CMSDK_TIMER1 ( (CMSDK_TIMER_TypeDef *) 0x40001000UL )
 
-#define TIMER_CTRL_EN     ( 1UL << 0 ) /* enable the timer */
-#define TIMER_CTRL_EXTIN  ( 1UL << 1 ) /* use the external input as enable */
+#define TIMER_CTRL_EN ( 1UL << 0 ) /* enable the timer */
+#define TIMER_CTRL_EXTIN ( 1UL << 1 ) /* use the external input as enable */
 #define TIMER_CTRL_EXTCLK ( 1UL << 2 ) /* use the external input as clock */
-#define TIMER_CTRL_IRQEN  ( 1UL << 3 ) /* raise an IRQ when the counter reaches 0 */
+#define TIMER_CTRL_IRQEN ( 1UL << 3 ) /* raise an IRQ when the counter reaches 0 */
 #define TIMER_INT_PENDING ( 1UL << 0 ) /* IRQ pending; write 1 to clear */
 
 _Static_assert( offsetof( CMSDK_TIMER_TypeDef, CTRL ) == 0x00, "TIMER CTRL offset" );

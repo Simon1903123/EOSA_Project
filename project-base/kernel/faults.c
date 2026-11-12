@@ -13,7 +13,7 @@
 #include "kernel/task.h"
 
 #define EXC_RETURN_PSP_BIT 4u
-#define BUS_STACK_ERRORS   ( ( 1u << 11 ) | ( 1u << 12 ) )
+#define BUS_STACK_ERRORS ( ( 1u << 11 ) | ( 1u << 12 ) )
 
 /* Stop here for ever. */
 static void halt( void )

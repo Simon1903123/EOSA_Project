@@ -32,8 +32,7 @@
 #endif
 
 /* The states of a task. */
-enum task_state
-{
+enum task_state {
     TASK_UNUSED,
     TASK_READY,         /* could run, waits for its turn */
     TASK_RUNNING,       /* owns the CPU now (exactly one task at a time) */
@@ -44,8 +43,7 @@ enum task_state
 
 /* The task control block (TCB): everything the kernel knows about one
  * task. The addresses come from the linker script (scripts/mps2_m3.ld). */
-struct tcb
-{
+struct tcb {
     /* The task's saved stack pointer, while the task is not running.
      * It MUST stay the first field: PendSV_Handler (kernel/pendsv.s) is
      * assembly and reads and writes it at offset 0 of the TCB, with a
@@ -68,10 +66,10 @@ struct tcb
 };
 
 #define PROGRAM_SLOT_COUNT 4
-#define SHELL_TASK_INDEX   0
+#define SHELL_TASK_INDEX 0
 #define PROGRAM_TASK_FIRST 1
-#define IDLE_TASK_INDEX    ( PROGRAM_TASK_FIRST + PROGRAM_SLOT_COUNT )
-#define NUM_TASKS          ( IDLE_TASK_INDEX + 1 )
+#define IDLE_TASK_INDEX ( PROGRAM_TASK_FIRST + PROGRAM_SLOT_COUNT )
+#define NUM_TASKS ( IDLE_TASK_INDEX + 1 )
 
 /* The task table (defined in kernel/task.c). The trace reads the names. */
 extern struct tcb tasks[NUM_TASKS];
