@@ -32,7 +32,21 @@
 #include "drivers/systick.h"
 #include "kernel/task.h"
 #include "kernel/trace.h"
-#include "kernel/kprintf.h"
+extern uint32_t __fs_image_start; 
+
+struct img_header {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t image_size;
+    uint32_t count;
+    uint32_t directory_offset;
+};
+
+struct img_dirent {
+    char name[16];
+    uint32_t offset;
+    uint32_t size;
+};
 
 /* Every service has the same shape: up to three arguments (the
  * caller's r0, r1, r2) and one result (which becomes the caller's r0).
@@ -79,6 +93,7 @@ static uint32_t sys_read_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     (void) a0;                                  /* not used */
     (void) a1;
     (void) a2;
+    
     /* -1 becomes 0xFFFFFFFF here; the caller's `int` turns it back into -1. */
     return ( uint32_t ) uart_getc_polled();
 }
@@ -207,31 +222,161 @@ static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     (void) a0;
     (void) a1;
     (void) a2;
+
+struct img_header *img = (struct img_header *)&__fs_image_start;
+
+    /* 1. Controllo Magic Number (deve essere "IMG1") */
+    if (img->magic != 0x31474d49) {
+        return (uint32_t)-1;
+    }
     
-    kprintf("sys_image_count_impl called\n");
-    return 0;
+    /* 2. Controllo Versione (deve essere 1) */
+    if (img->version != 1) {
+        return (uint32_t)-1;
+    }
+
+    /* 3. Controllo Count (tra 1 e 32 programmi) */
+    if (img->count < 1 || img->count > 32) {
+        return (uint32_t)-1;
+    }
+
+    /* Controllo Dimensione Immagine: 
+     * Minimo 20 byte (la grandezza dell'header stesso),
+     * Massimo 0x00200000 (i 2 MiB fisici disponibili in Flash). */
+    if (img->image_size < 20 || img->image_size > 0x00200000) {
+        return (uint32_t)-1;
+    }
+
+    /* Controllo Offset della Directory:
+     * Minimo 20 (deve partire dopo l'header),
+     * Multiplo di 4 (il resto della divisione per 4 deve essere 0 per l'allineamento). */
+    if (img->directory_offset < 20 || (img->directory_offset % 4) != 0) {
+        return (uint32_t)-1;
+    }
+
+    /* Controllo Limiti e Prevenzione Overflow:
+     * Calcoliamo dove finisce la directory (inizio + numero di file * 24 byte). */
+    uint32_t directory_end = img->directory_offset + (img->count * 24);
+    
+    /* Usiamo l'OR logico (||) invece del bitwise OR (|).
+     * 1° check: Se directory_end è minore della partenza, c'è stato un integer overflow.
+     * 2° check: Se la fine sfora la dimensione totale dell'immagine dichiarata, è un errore. */
+    if (directory_end < img->directory_offset || directory_end > img->image_size) {
+        return (uint32_t)-1;
+    }
+
+    /* Se arriviamo qui, l'immagine è immacolata. Restituiamo il numero di file. */
+    return img->count;
 }
 
 static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
 {
-    (void) a0;
-    (void) a1;
-    (void) a2;
+    //a0 indice 
+    //a1 puntatore al buffer
+    //a2 dimensione del buffer
     
-    kprintf("sys_image_name_impl called\n");
-    return 0;
+    /* 1. Controllo validità immagine e indice */
+    uint32_t count = sys_image_count_impl(0, 0, 0);
+    if (count == (uint32_t)-1 || a0 >= count) {
+        return (uint32_t)-1;
+    }
+
+    /* 2. Controllo capacità del buffer richiesta dalle specifiche */
+    if (a2 < 1 || a2 > 16) {
+        return (uint32_t)-1;
+    }
+
+    /* 3. Pointer Guard: Sicurezza della memoria utente */
+    const struct tcb *t = tcb_current;
+    if (t != 0 && !in_range(a1, a2, t->part_start, t->part_end)) {
+        return (uint32_t)-1;
+    }
+
+    /* 4. Calcolo dell'indirizzo fisico in Flash */
+    struct img_header *img = (struct img_header *)&__fs_image_start;
+    
+    char *flash_name = (char *)((uint32_t)img + img->directory_offset + (a0 * 24));
+    char *dest_buffer = (char *)a1;
+
+    /* 5. Copia dei caratteri */
+    for (uint32_t i = 0; i < a2 - 1; i++) {
+        dest_buffer[i] = flash_name[i];
+        
+        if (flash_name[i] == '\0') {
+            return 0; /* Successo: fine della stringa raggiunta */
+        }
+    }
+
+    /* 6. Troncamento se il buffer è troppo piccolo */
+    dest_buffer[a2 - 1] = '\0';
+    return (uint32_t)-1;
 }
 
 static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
 {
-    (void) a0;
+    //a0 = nome del file che vogliamo runnare
     (void) a1;
     (void) a2;
-    
-    kprintf("sys_program_run_impl called\n");
-    return 0;
-}
+    const struct tcb *t = tcb_current;
 
+    /* 1. Pointer Guard: La stringa deve essere in RAM (utente) o in FLASH statica */
+    uint32_t in_ram = (t != 0 && in_range(a0, 16, t->part_start, t->part_end));
+    uint32_t in_flash = in_range(a0, 16, 0x00000000, 0x00400000);
+    
+    if (!in_ram && !in_flash) {
+        return (uint32_t)-1;
+    }
+
+    /* 2. Controllo validità immagine (riutilizziamo la nostra funzione!) */
+    uint32_t count = sys_image_count_impl(0, 0, 0);
+    if (count == (uint32_t)-1) {
+        return (uint32_t)-1;
+    }
+
+    struct img_header *img = (struct img_header *)&__fs_image_start;
+    char *nome_richiesto = (char *)a0;
+    struct img_dirent *file_found = 0;
+
+
+    /* 3. Scansione della directory */
+    for (uint32_t i = 0; i < count; i++) {
+        //Indirizzo base + offset dell'header della directory + (24byte per ogni file) * indice del programma che vogliamo runnare
+        uint32_t entry_addr = (uint32_t)img + img->directory_offset + (i * 24);
+        struct img_dirent *entry = (struct img_dirent *)entry_addr;
+        int uguali = 1;
+        
+        /* 3. Ciclo secondario: confronto carattere per carattere (max 16 byte) */
+        for(int k = 0; k < 16; k++){
+            if (nome_richiesto[k] != entry->name[k]) {
+                uguali = 0; /* Trovata una lettera diversa! */
+                break;      /* Interrompe SOLO il ciclo 'for' interno (variabile k) */
+            }
+            
+            if (nome_richiesto[k] == '\0') {
+                /* Entrambi i caratteri sono uguali e sono il terminatore. 
+                 * La parola è finita e combacia perfettamente. */
+                break;
+            }
+        }
+        if(uguali == 1){
+            file_found = entry; 
+            break;
+        }
+    }
+
+    /* 5. Gestione del fallimento (siamo fuori dal ciclo principale) */
+    if (file_found == 0) {
+        return (uint32_t)-2; /* Errore da specifiche: file non trovato */
+    }
+
+    /* ========================================================= */
+    /* QUI INIZIERA' IL LAVORO DEL LOADER VERO E PROPRIO         */
+    /* Abbiamo la voce esatta (file_trovato). Ora bisogna        */
+    /* trovare uno slot RAM e caricare il file ELF.              */
+    /* ========================================================= */
+
+    return (uint32_t)-1; /* Temporaneo, in attesa del codice del tuo compagno */
+}
 /* The dispatch table: table[n] is the function for service n.
  * The [SYS_WRITE] = ... form puts each entry at its number, whatever
  * the order of the lines. Entry 0 is left empty (0): it is not a
@@ -249,7 +394,7 @@ static const syscall_fn table[] = {
     [SYS_TICK_COUNT]  = sys_tick_count_impl,
     [SYS_PROGRAM_WAIT] = sys_program_wait_impl,
     [SYS_IMAGE_COUNT] = sys_image_count_impl,
-    [SYS_IMAGE_NAME] = sys_image_name_impl,
+    [SYS_IMAGE_NAME]  = sys_image_name_impl,
     [SYS_PROGRAM_RUN] = sys_program_run_impl,
 };
 

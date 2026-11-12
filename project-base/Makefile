@@ -19,6 +19,7 @@ IMAGE_ADDR := 0x00200000
 IMAGE_TOOL ?= tools/mkimage.py
 PROGRAM_DIR ?= programs
 
+
 # The folders that hold our source files, one folder per OS layer.
 SRC_DIRS := boot kernel drivers lib src
 # Find every .c file (C code) and every .s file (assembly) in those
@@ -78,7 +79,7 @@ QEMU := qemu-system-arm -machine mps2-an385 -monitor null -nographic -serial std
 QEMU += -device loader,file=$(IMAGE),addr=$(IMAGE_ADDR),force-raw=on
 
 # These targets are command names, not files on disk.
-.PHONY: all clean image run debug run-trace test
+.PHONY: all clean image run debug run-trace test programs
 
 # Default goal: build the image.
 all: $(BIN)
@@ -106,13 +107,13 @@ $(IMAGE):
 	@mkdir -p $(dir $@)
 	@printf 'SCRATCH-OS-PROJECT-IMAGE\n' > $@
 
-# The host tool is student work. Once it exists, this target rebuilds the
-# image from every program in programs/. The separate $(IMAGE) rule above
-# remains the bootable placeholder used by an untouched project base.
-image: $(BIN)
+# Build the real image: depends on the kernel and on all programs (make programs).
+# Then packs every NAME=build/programs/NAME.elf from PROG_MAP(see end of Makefile) with mkimage.py.
+# This overwrites the placeholder created by the $(IMAGE) rule above.
+image: $(BIN) programs
 	@test -f $(IMAGE_TOOL) || { printf '%s\n' 'make image: implement tools/mkimage.py first'; exit 2; }
 	@test -d $(PROGRAM_DIR) || { printf '%s\n' 'make image: programs/ is missing'; exit 2; }
-	python3 $(IMAGE_TOOL) --output $(IMAGE) $(PROGRAM_DIR)
+	python3 $(IMAGE_TOOL) image $(IMAGE) $(foreach m,$(PROG_MAP),$(word 1,$(subst :, ,$(m)))=$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf) # For each PROG_MAP entry (e.g., print_plain:print_plain.c), build NAME=build/programs/NAME.elf for mkimage.py.
 
 # Build, load the image at its fixed FLASH address, then run in QEMU.
 run: $(BIN) $(IMAGE)
@@ -141,6 +142,48 @@ test:
 	@printf '%s\n' 'make test: unavailable until the common project test kit is implemented (OpenSpec task 5.2).'
 	@exit 2
 
-# Remove every generated file, demo and quantum builds included.
+# Remove every generated file, demo and quantum build, build/programs/, build/fs.img e build/scratch-os.axf included.
 clean:
 	rm -rf build
+
+# Programs build directory and source directory. The programs are built into build/programs/ from programs/.
+PROG_DIR:= programs
+
+# Output .ELF of the programs (can be deleted with make clean)
+PROG_OUT:= build/programs
+
+# Mapping of C files  Programs to build: NAME:SOURCE, where NAME is the name the shell
+# shows and `run` accepts, and SOURCE is the .c file in programs/.
+# Names must match the test kit (e.g. globals_bss_const.c -> global_state)
+PROG_MAP:= print_plain:print_plain.c global_state:globals_bss_const.c thumb_ptr:thumb_function_pointer.c nonzero_slot:nonzero_slot_relocation.c normal_return:normal_return.c explicit_exit:explicit_exit.c kernel_store:kernel_store.c wx_write_code:wx_write_code.c wx_exec_data:wx_exec_data.c
+
+# The runtime support files for the programs: startup code, syscalls, printf and format.
+PROG_RT:= $(PROG_DIR)/user_start.s $(PROG_DIR)/lib/syscalls.s $(PROG_DIR)/lib/printf.c $(PROG_DIR)/lib/format.c
+
+# Compiler flags for the programs: Cortex-M3, Thumb, no C library.
+#	-fno-pic: no position-independent code; the loader does not handle its tables
+#	-fno-builtin: no built-in replacements for printf, memcpy, ...; use our own code
+#	-I$(PROG_DIR): look for #include "lib/..." inside programs/, not in the kernel
+PROG_CFLAGS:= -mcpu=cortex-m3 -mthumb -ffreestanding -fno-builtin -fno-pic -nostdlib -O2 -g -Wall -Wextra -I$(PROG_DIR)
+
+# Linker flags: our memory map, keep the relocations, no libraries (with prog.ld as the linker script of the programs)
+PROG_LDFLAGS:= -nostdlib -static -T $(PROG_DIR)/prog.ld -Wl,--emit-relocs
+
+# The .elf files to build, one per entry of PROG_MAP, in the build/programs folder. The `foreach` iterates over every entry of PROG_MAP, and for each entry it takes the first word (the name before the colon) and appends .elf to it.
+PROG_ELF:= $(foreach m,$(PROG_MAP),$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf)
+
+# Programs: build every program in programs/ into a .elf file in build/programs/
+programs: $(PROG_ELF)
+
+# PROG_RULE is a template for one program: it builds build/programs/NAME.elf
+# from programs/SOURCE, the runtime files and prog.ld. $$@ is the target,
+# escaped so that it is expanded when make runs the recipe.
+define PROG_RULE
+$(PROG_OUT)/$(1).elf: $(PROG_DIR)/$(2) $(PROG_RT) $(PROG_DIR)/prog.ld
+	@mkdir -p $(PROG_OUT)
+	arm-none-eabi-gcc $(PROG_CFLAGS) -o $$@ $(PROG_RT) $(PROG_DIR)/$(2) $(PROG_LDFLAGS) -lgcc
+endef
+
+# Create one real rule for each PROG_MAP entry (NAME:SOURCE), by filling the
+# template with the name (first part) and the source (second part).
+$(foreach m,$(PROG_MAP),$(eval $(call PROG_RULE,$(word 1,$(subst :, ,$(m))),$(word 2,$(subst :, ,$(m))))))
