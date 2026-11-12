@@ -79,7 +79,7 @@ QEMU := qemu-system-arm -machine mps2-an385 -monitor null -nographic -serial std
 QEMU += -device loader,file=$(IMAGE),addr=$(IMAGE_ADDR),force-raw=on
 
 # These targets are command names, not files on disk.
-.PHONY: all clean image run debug run-trace test programs
+.PHONY: all clean image run debug run-trace test test-list programs format format-check
 
 # Default goal: build the image.
 all: $(BIN)
@@ -108,12 +108,11 @@ $(IMAGE):
 	@printf 'SCRATCH-OS-PROJECT-IMAGE\n' > $@
 
 # Build the real image: depends on the kernel and on all programs (make programs).
-# Then packs every NAME=build/programs/NAME.elf from PROG_MAP(see end of Makefile) with mkimage.py.
+# Then packs every NAME=build/programs/NAME.elf from PROG_MAP (see PROG_ARGS) with mkimage.py.
 # This overwrites the placeholder created by the $(IMAGE) rule above.
 image: $(BIN) programs
 	@test -f $(IMAGE_TOOL) || { printf '%s\n' 'make image: implement tools/mkimage.py first'; exit 2; }
-	@test -d $(PROGRAM_DIR) || { printf '%s\n' 'make image: programs/ is missing'; exit 2; }
-	python3 $(IMAGE_TOOL) image $(IMAGE) $(foreach m,$(PROG_MAP),$(word 1,$(subst :, ,$(m)))=$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf) # For each PROG_MAP entry (e.g., print_plain:print_plain.c), build NAME=build/programs/NAME.elf for mkimage.py.
+	python3 $(IMAGE_TOOL) image $(IMAGE) $(PROG_ARGS)
 
 # Build, load the image at its fixed FLASH address, then run in QEMU.
 run: $(BIN) $(IMAGE)
@@ -136,11 +135,42 @@ debug: $(BIN) $(IMAGE)
 run-trace: $(BIN) $(IMAGE)
 	$(QEMU) -d unimp
 
-# Task 5.2 will publish the common test kit. Do not report a false pass
-# while that suite is intentionally absent.
-test:
-	@printf '%s\n' 'make test: unavailable until the common project test kit is implemented (OpenSpec task 5.2).'
-	@exit 2
+# ---------------------------------------------------------------------------
+# Tests (used by .github/workflows/tests.yml)
+# ---------------------------------------------------------------------------
+# The common test kit, copied into the repository so that CI can find it.
+TEST_KIT ?= test-kit
+# Where the test image and its fixtures are generated.
+TEST_OUT := $(BUILD_DIR)/test-kit/big
+
+# List the big-suite tests. Needs only python3: it runs before the ARM
+# compiler is installed, so it checks that the test kit is in place.
+test-list:
+	python3 $(TEST_KIT)/run_tests.py --suite big --list
+
+# Build kernel and programs, let the test kit pack its own image from our
+# ELF files (plus the broken ones it adds), then run the big suite in QEMU.
+test: $(BIN) programs
+	python3 $(TEST_KIT)/big/generate_fixtures.py --output-dir $(TEST_OUT)/files --image $(TEST_OUT)/fs.img $(PROG_ARGS)
+	python3 $(TEST_KIT)/run_tests.py --suite big --kernel $(BIN) --image $(TEST_OUT)/fs.img
+
+# ---------------------------------------------------------------------------
+# Formatting (used by .github/workflows/format.yml)
+# ---------------------------------------------------------------------------
+# The same clang-format version as the CI runner: other versions may format
+# some lines differently.
+CLANG_FORMAT ?= clang-format-18
+# Our C sources and headers. The programs of the test kit (programs/*.c)
+# are left exactly as distributed.
+FORMAT_SRCS := $(foreach d,boot kernel drivers lib src include programs/lib,$(wildcard $(d)/*.c $(d)/*.h))
+
+# Rewrite the files in the style of .clang-format.
+format:
+	$(CLANG_FORMAT) -i $(FORMAT_SRCS)
+
+# Only check: fail and show the lines that `make format` would change.
+format-check:
+	$(CLANG_FORMAT) --dry-run --Werror $(FORMAT_SRCS)
 
 # Remove every generated file, demo and quantum build, build/programs/, build/fs.img e build/scratch-os.axf included.
 clean:
@@ -171,6 +201,10 @@ PROG_LDFLAGS:= -nostdlib -static -T $(PROG_DIR)/prog.ld -Wl,--emit-relocs
 
 # The .elf files to build, one per entry of PROG_MAP, in the build/programs folder. The `foreach` iterates over every entry of PROG_MAP, and for each entry it takes the first word (the name before the colon) and appends .elf to it.
 PROG_ELF:= $(foreach m,$(PROG_MAP),$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf)
+
+# The NAME=build/programs/NAME.elf arguments for mkimage.py and for the test kit,
+# one per entry of PROG_MAP, in the same order.
+PROG_ARGS = $(foreach m,$(PROG_MAP),$(word 1,$(subst :, ,$(m)))=$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf)
 
 # Programs: build every program in programs/ into a .elf file in build/programs/
 programs: $(PROG_ELF)

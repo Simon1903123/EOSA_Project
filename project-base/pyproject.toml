@@ -1,0 +1,4 @@
+# Black configuration (used by .github/workflows/format.yml).
+[tool.black]
+# The common test kit is copied as distributed: Black does not check it.
+extend-exclude = "^/test-kit/"

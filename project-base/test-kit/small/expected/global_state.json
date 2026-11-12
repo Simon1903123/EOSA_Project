@@ -1,0 +1,4 @@
+{
+  "commands": ["run global_state"],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run global_state\nloader: global_state slot=0 base=0x20002000 id=4\nglobals_bss_const: global=37 bss=0 table=16 sum=53\nprogram global_state exited\nscratch> "
+}

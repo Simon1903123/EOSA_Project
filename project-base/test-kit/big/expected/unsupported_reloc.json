@@ -1,0 +1,4 @@
+{
+  "commands": ["run bad_rel_type", "run print_plain"],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run bad_rel_type\nloader: unsupported relocation type 3\nerror: program cannot be loaded\nscratch> run print_plain\nloader: print_plain slot=0 base=0x20002000 id=4\nprint_plain: hello from a loaded program\nprogram print_plain exited\nscratch> "
+}

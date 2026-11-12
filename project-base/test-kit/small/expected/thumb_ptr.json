@@ -1,0 +1,4 @@
+{
+  "commands": ["run thumb_ptr"],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run thumb_ptr\nloader: thumb_ptr slot=0 base=0x20002000 id=4\nthumb_function_pointer: thumb=1 result=42\nprogram thumb_ptr exited\nscratch> "
+}

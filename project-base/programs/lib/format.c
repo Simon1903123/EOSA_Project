@@ -73,63 +73,63 @@ void vformat( void ( *out )( char c, void *ctx ), void *ctx,
         fmt++;
         switch ( *fmt )
         {
-        case 'c':
+            case 'c':
             /* A char is promoted to int when passed as "...". */
-            out( (char) va_arg( ap, int ), ctx );
-            break;
+                out( (char) va_arg( ap, int ), ctx );
+                break;
 
-        case 's':
-        {
-            const char *s = va_arg( ap, const char * );
+            case 's':
+            {
+                const char *s = va_arg( ap, const char * );
             /* Do not crash on a null pointer. */
-            put_string( out, ctx, s != 0 ? s : "(null)" );
-            break;
-        }
+                put_string( out, ctx, s != 0 ? s : "(null)" );
+                break;
+            }
 
-        case 'd':
-        {
-            int v = va_arg( ap, int );
-            uint32_t mag;
-            if ( v < 0 )
+            case 'd':
             {
-                out( '-', ctx );
+                int v = va_arg( ap, int );
+                uint32_t mag;
+                if ( v < 0 )
+                {
+                    out( '-', ctx );
                 /* Negate in unsigned arithmetic: this also works for
-                 * INT_MIN, whose positive value does not fit in an int. */
-                mag = 0u - (uint32_t) v;
+                     * INT_MIN, whose positive value does not fit in an int. */
+                    mag = 0u - (uint32_t) v;
+                }
+                else
+                {
+                    mag = (uint32_t) v;
+                }
+                utoa_dec( mag, num );
+                put_string( out, ctx, num );
+                break;
             }
-            else
-            {
-                mag = (uint32_t) v;
-            }
-            utoa_dec( mag, num );
-            put_string( out, ctx, num );
-            break;
-        }
 
-        case 'u':
-            utoa_dec( va_arg( ap, uint32_t ), num );
-            put_string( out, ctx, num );
-            break;
+            case 'u':
+                utoa_dec( va_arg( ap, uint32_t ), num );
+                put_string( out, ctx, num );
+                break;
 
-        case 'x':
-            utoa_hex( va_arg( ap, uint32_t ), num );
-            put_string( out, ctx, num );
-            break;
+            case 'x':
+                utoa_hex( va_arg( ap, uint32_t ), num );
+                put_string( out, ctx, num );
+                break;
 
-        case '%':
-            out( '%', ctx );
-            break;
+            case '%':
+                out( '%', ctx );
+                break;
 
-        case '\0':
+            case '\0':
             /* The string ended right after '%': print the '%' and stop. */
-            out( '%', ctx );
-            return;
+                out( '%', ctx );
+                return;
 
-        default:
+            default:
             /* Unknown letter: print "%" and the letter as written. */
-            out( '%', ctx );
-            out( *fmt, ctx );
-            break;
+                out( '%', ctx );
+                out( *fmt, ctx );
+                break;
         }
         fmt++;      /* move past the conversion letter */
     }

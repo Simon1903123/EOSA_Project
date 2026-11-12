@@ -1,0 +1,14 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+BreakBeforeBraces: Allman
+SpacesInParentheses: true
+SpaceAfterCStyleCast: true
+SortIncludes: Never
+ColumnLimit: 0
+BreakBeforeBinaryOperators: All
+AlignConsecutiveMacros: Consecutive
+AlignTrailingComments:
+  Kind: Leave
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+IndentCaseLabels: true

@@ -1,0 +1,4 @@
+{
+  "commands": ["run wx_exec_data", "run print_plain"],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run wx_exec_data\nloader: wx_exec_data slot=0 base=0x20002000 id=4\nwx_exec_data: jumping into data\nMemManage in loaded program: CFSR=0x1\nprogram wx_exec_data faulted\nscratch> run print_plain\nloader: print_plain slot=0 base=0x20002000 id=8\nprint_plain: hello from a loaded program\nprogram print_plain exited\nscratch> "
+}

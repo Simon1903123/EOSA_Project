@@ -1,0 +1,17 @@
+{
+  "image": "fs.img",
+  "fresh_boot_per_fixture": true,
+  "fixtures": [
+    {"name": "print_plain", "kind": "program", "source": "programs/print_plain.c", "expected": "expected/print_plain.json"},
+    {"name": "global_state", "kind": "program", "source": "programs/globals_bss_const.c", "expected": "expected/global_state.json"},
+    {"name": "thumb_ptr", "kind": "program", "source": "programs/thumb_function_pointer.c", "expected": "expected/thumb_ptr.json"},
+    {"name": "nonzero_slot", "test": "nonzero_slot_relocation", "kind": "program", "source": "programs/nonzero_slot_relocation.c", "expected": "expected/nonzero_slot_relocation.json"},
+    {"name": "normal_return", "kind": "program", "source": "programs/normal_return.c", "expected": "expected/normal_return.json"},
+    {"name": "explicit_exit", "kind": "program", "source": "programs/explicit_exit.c", "expected": "expected/explicit_exit.json"},
+    {"name": "kernel_store", "kind": "program", "source": "programs/kernel_store.c", "expected": "expected/kernel_store.json"},
+    {"name": "bad_magic", "kind": "malformed_sft1", "case": "wrong magic", "expected": "expected/bad_magic.json"},
+    {"name": "bad_header", "kind": "malformed_sft1", "case": "unsupported SFT1 version", "expected": "expected/bad_header.json"},
+    {"name": "too_large", "kind": "malformed_sft1", "case": "3076-byte footprint exceeds 3072-byte limit", "expected": "expected/too_large.json"},
+    {"name": "bad_reloc", "kind": "malformed_sft1", "case": "relocation offset 4 is outside 4 initialized bytes", "expected": "expected/bad_reloc.json"}
+  ]
+}

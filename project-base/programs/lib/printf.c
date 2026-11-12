@@ -38,7 +38,7 @@ void write_all( const char *buf, unsigned len )
              * makes room). `wfi` = "wait for interrupt". It is allowed
              * in unprivileged code. C cannot write it, so we use one
              * line of inline assembly. */
-            __asm volatile ( "wfi" );
+            __asm volatile( "wfi" );
         }
     }
 }
@@ -94,7 +94,7 @@ void sleep_ms( uint32_t ms )
     {
         /* Nothing to do: sleep until the next interrupt (at the
          * latest the next clock tick, 10 ms away). */
-        __asm volatile ( "wfi" );
+        __asm volatile( "wfi" );
     }
 }
 

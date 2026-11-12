@@ -45,19 +45,19 @@ struct tcb tasks[NUM_TASKS] = {
     [PROGRAM_TASK_FIRST + 2] = { .name = "slot2", .state = TASK_UNUSED },
     [PROGRAM_TASK_FIRST + 3] = { .name = "slot3", .state = TASK_UNUSED },
     [IDLE_TASK_INDEX] = {
-        .name       = "idle",
-        .entry      = idle_task,
-        .stack_top  = _idle_stack_top,
-        .part_start = ( uint32_t ) _idle_part_start,
-        .part_end   = ( uint32_t ) _idle_part_end,
+        .name = "idle",
+        .entry = idle_task,
+        .stack_top = _idle_stack_top,
+        .part_start = (uint32_t) _idle_part_start,
+        .part_end = (uint32_t) _idle_part_end,
         .data_start = _idle_data_start,
-        .data_end   = _idle_data_end,
-        .data_load  = _idle_data_load,
+        .data_end = _idle_data_end,
+        .data_load = _idle_data_load,
     },
 };
 
 #define NUM_APP_TASKS ( NUM_TASKS - 1 )
-#define IDLE_TCB ( &tasks[IDLE_TASK_INDEX] )
+#define IDLE_TCB      ( &tasks[IDLE_TASK_INDEX] )
 
 /* See kernel/task.h. */
 struct tcb *tcb_current = 0;
@@ -125,11 +125,11 @@ static void task_init_stack( struct tcb *t )
     frame[4] = 0;                           /* r12 */
     /* lr: where the task goes when its function returns. task_exit
      * (lib/syscalls.s) calls sys_exit, so returning means exit. */
-    frame[5] = ( uint32_t ) task_exit;
+    frame[5] = (uint32_t) task_exit;
     /* pc: where the task starts. A C function address has bit 0 set
      * (it means "Thumb code"); the saved pc must be a real instruction
      * address, so bit 0 is cleared. */
-    frame[6] = ( uint32_t ) t->entry & ~1u;
+    frame[6] = (uint32_t) t->entry & ~1u;
     frame[7] = XPSR_THUMB;                  /* xPSR: only the Thumb bit */
 
     /* Below the frame: 8 more words for r4..r11, which PendSV saves
@@ -143,7 +143,7 @@ static void task_init_stack( struct tcb *t )
     t->sp = regs;                           /* the saved stack pointer */
 }
 
-__attribute__((weak)) void task_project_configure( void )
+__attribute__( ( weak ) ) void task_project_configure( void )
 {
 }
 
@@ -180,7 +180,8 @@ uint32_t task_start_first( void )
 
     /* An untouched base has no shell, so it starts directly in idle. */
     tcb_current = tasks[SHELL_TASK_INDEX].state == TASK_READY
-                ? &tasks[SHELL_TASK_INDEX] : IDLE_TCB;
+                      ? &tasks[SHELL_TASK_INDEX]
+                      : IDLE_TCB;
     tcb_current->state = TASK_RUNNING;
     rr_last = 0;
     quantum_left = QUANTUM;
@@ -206,13 +207,13 @@ uint32_t task_start_first( void )
      *     PSP = tcb_current->sp + 8;
      *     CONTROL = CONTROL | 1;   // nPRIV = 1: thread mode is unprivileged
      */
-    __asm volatile (
+    __asm volatile(
         "msr psp, %0        \n" /* PSP = the task's hardware frame */
         "mrs r1, control    \n" /* r1 = CONTROL (read) */
         "orr r1, r1, #1     \n" /* r1 |= 1: set nPRIV (modify) */
         "msr control, r1    \n" /* CONTROL = r1 (write) */
         "isb                \n" /* make the new CONTROL take effect now */
-        : : "r" ( tcb_current->sp + 8 ) : "r1", "memory" );
+        : : "r"( tcb_current->sp + 8 ) : "r1", "memory" );
 
     /* Return to thread mode on the process stack: the hardware pops the
      * frame from PSP, and the task starts at its entry with CONTROL = 3
@@ -251,7 +252,7 @@ void task_increment_tick( void )
     for ( unsigned i = 0; i < NUM_APP_TASKS; i++ )
     {
         if ( tasks[i].state == TASK_BLOCKED
-             && ( int32_t ) ( tick_count - tasks[i].wake_tick ) >= 0 )
+             && (int32_t) ( tick_count - tasks[i].wake_tick ) >= 0 )
         {
             tasks[i].state = TASK_READY;    /* may run again */
             woke = 1;
@@ -302,7 +303,7 @@ int task_current_is_program( void )
 int task_program_slot_free( unsigned slot )
 {
     return slot < PROGRAM_SLOT_COUNT
-        && tasks[PROGRAM_TASK_FIRST + slot].state == TASK_UNUSED;
+           && tasks[PROGRAM_TASK_FIRST + slot].state == TASK_UNUSED;
 }
 
 int task_program_create( unsigned slot, const char *name,

@@ -39,8 +39,8 @@
 #define SYS_DELAY       7   /* block for a number of ticks */
 #define SYS_DELAY_UNTIL 8   /* block until an absolute tick (periodic tasks) */
 /* Print the recorded task switches and a Gantt chart (kernel/trace.c). */
-#define SYS_TRACE_DUMP  9
-#define SYS_TICK_COUNT  10  /* ticks since the scheduler started */
+#define SYS_TRACE_DUMP 9
+#define SYS_TICK_COUNT 10  /* ticks since the scheduler started */
 /* Project loader contract. The base exports stubs only: kernel support
  * is intentionally part of the project implementation. */
 #define SYS_IMAGE_COUNT  11 /* number of directory entries in fs.img */

@@ -1,0 +1,4 @@
+{
+  "commands": ["run explicit_exit"],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run explicit_exit\nloader: explicit_exit slot=0 base=0x20002000 id=4\nexplicit_exit: calling sys_exit\nprogram explicit_exit exited\nscratch> "
+}
