@@ -1,3 +1,4 @@
 build/*
 !build/fs.img
 !build/scratch-os.axf
+.vscode
