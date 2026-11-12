@@ -148,7 +148,7 @@ static void execute(const char *line)
     {
         printf("help - show commands\n");
         printf("ls - list programs\n");
-        printf("run <n> - run a program\n");
+        printf("run <name> - run a program\n");
     }
     // "ls" .
     else if ((rest = skip_prefix(line, "ls")) && *rest == '\0')
