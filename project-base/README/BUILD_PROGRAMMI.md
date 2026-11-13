@@ -230,3 +230,120 @@ c4 e6 0a 00   dimensione totale (qui 714436; dipende dal compilatore)
 09 00 00 00   9 programmi
 14 00 00 00   la directory inizia a 20
 ```
+
+```markdown
+## 9. Startup utente (`programs/user_start.s`)
+
+Il file `programs/user_start.s` è l'entry point in assembly collegato a tutti i programmi in User Space (inclusa la shell).
+
+```asm
+.syntax unified
+.cpu cortex-m3
+.thumb
+
+.global _start
+.thumb_func
+_start:
+    bl main        @ esegue il programma utente
+    bl sys_exit    @ se main ritorna, termina il task (SVC 4)
+hang:
+    b hang         @ loop di sicurezza (non raggiungibile)
+```
+
+- **Scopo:** quando il kernel crea un task utente e la MPU gli cede il controllo, la CPU ha bisogno di un punto di ingresso univoco. `_start` funge da ponte: invoca `main()` e, al suo ritorno, chiama esplicitamente `sys_exit()` (SVC 4) per liberare lo slot di RAM e chiudere il ciclo di vita del task in modo pulito.
+- **Bit Thumb:** la direttiva `.thumb_func` imposta a `1` il bit 0 dell'indirizzo di `_start` (entry point `0x1`), requisito necessario sul Cortex-M3 per evitare fault al primo salto.
+
+## 10. Mappatura dell'immagine IMG1 in `kernel/syscall.c`
+
+Il kernel non ha un driver di file system né funzioni di libreria ad alto livello: legge l'immagine `build/fs.img` direttamente dalla FLASH a partire dall'indirizzo `0x00200000`, esposto dal linker tramite il simbolo `__fs_image_start`.
+
+**Le strutture dati.** Per interpretare i byte grezzi in FLASH senza calcoli manuali sugli offset, abbiamo definito due `struct` con campi a dimensione fissa (`uint32_t`) che ricalcano il formato IMG1:
+
+```c
+extern uint32_t __fs_image_start;
+
+struct img_header {
+    uint32_t magic;             /* 4 byte: "IMG1" (0x31474d49) */
+    uint32_t version;           /* 4 byte: versione formato (1) */
+    uint32_t image_size;        /* 4 byte: dimensione totale immagine */
+    uint32_t count;             /* 4 byte: numero programmi (1..32) */
+    uint32_t directory_offset;  /* 4 byte: inizio directory */
+};                              /* Totale: 20 byte */
+
+struct img_dirent {
+    char name[16];              /* 16 byte: nome terminato da '\0' */
+    uint32_t offset;            /* 4 byte: offset dell'ELF in FLASH */
+    uint32_t size;              /* 4 byte: dimensione dell'ELF */
+};                              /* Totale: 24 byte */
+```
+
+**Il cast diretto.** Convertendo l'indirizzo del simbolo del linker in un puntatore a `struct img_header`:
+
+```c
+struct img_header *img = (struct img_header *)&__fs_image_start;
+```
+
+- **Come funziona:** non viene allocata nuova memoria in RAM. Sovrapponiamo una mappa logica alla FLASH statica: quando accediamo a `img->count`, il compilatore calcola automaticamente lo spostamento di 12 byte dall'indirizzo base `0x00200000`.
+
+## 11. System call dell'immagine (SVC 11, 12, 13)
+
+Le tre system call aggiunte alla `table[]` di `kernel/syscall.c` gestiscono l'accesso controllato all'immagine IMG1:
+
+| Servizio | Numero | Argomenti (`r0`, `r1`, `r2`) | Ritorno |
+|---|---|---|---|
+| `SYS_IMAGE_COUNT` | 11 | nessuno | numero di programmi (`1..32`), oppure `-1` se l'immagine non è valida |
+| `SYS_IMAGE_NAME` | 12 | `index`, `buf`, `capacity` | `0` se copiato, `-1` su errore o nome troncato |
+| `SYS_PROGRAM_RUN` | 13 | `name` | task ID (con loader), `-2` se non trovato, `-1` su errore |
+
+**SVC 11 — `sys_image_count_impl` (validazione e overflow).** Oltre a verificare `magic` (`0x31474d49`), `version` (`1`), `count` (`1..32`), `image_size` (`20..0x00200000`) e l'allineamento a 4 byte di `directory_offset` (`>= 20`), la funzione calcola la fine della directory per prevenire integer overflow:
+
+```c
+uint32_t directory_end = img->directory_offset + (img->count * 24);
+if (directory_end < img->directory_offset || directory_end > img->image_size) {
+    return (uint32_t)-1;
+}
+```
+
+- **Perché serve:** se un'immagine corrotta dichiarasse un `count` enorme, la moltiplicazione potrebbe mandare in overflow il registro a 32 bit facendo ripartire il conteggio da zero (`directory_end < img->directory_offset`) o sforando `image_size`, portando il kernel a leggere fuori dalla FLASH (`BusFault`).
+
+**SVC 12 — `sys_image_name_impl` (pointer guard e copia).** Valida l'immagine richiamando `sys_image_count_impl(0, 0, 0)`, controlla che `a0 < count` e che `a2` (`capacity`) sia tra `1` e `16`. Prima di scrivere in memoria, verifica che il buffer passato dal task rientri interamente nella sua partizione RAM:
+
+```c
+const struct tcb *t = tcb_current;
+if (t != 0 && !in_range(a1, a2, t->part_start, t->part_end)) {
+    return (uint32_t)-1;
+}
+```
+
+- **Pointer guard:** impedisce a un programma utente compromesso di passare al kernel l'indirizzo di una variabile del kernel o di un altro task per farsela sovrascrivere.
+- **Copia e troncamento:** i caratteri vengono copiati uno a uno dalla FLASH al buffer utente fino a `a2 - 1`. Se si incontra `\0` la funzione ritorna `0`; se il buffer finisce prima della stringa, scrive `\0` in `dest_buffer[a2 - 1]` e ritorna `-1` per segnalare il troncamento.
+
+**SVC 13 — `sys_program_run_impl` (ricerca nella directory).** Accetta il puntatore `a0` al nome del programma (verificando con `in_range` che risieda nella RAM del task chiamante o nella FLASH `0x00000000..0x00400000`) e scorre le voci della directory:
+
+```c
+for (uint32_t i = 0; i < count; i++) {
+    uint32_t entry_addr = (uint32_t)img + img->directory_offset + (i * 24);
+    struct img_dirent *entry = (struct img_dirent *)entry_addr;
+    int uguali = 1;
+
+    for (int k = 0; k < 16; k++) {
+        if (nome_richiesto[k] != entry->name[k]) {
+            uguali = 0;
+            break;
+        }
+        if (nome_richiesto[k] == '\0') {
+            break;
+        }
+    }
+    if (uguali == 1) {
+        file_found = entry;
+        break;
+    }
+}
+```
+
+- **Aritmetica dei puntatori e cast dinamico:** il cast `(uint32_t)img` forza un'addizione esatta in byte (evitando che il C moltiplichi per `sizeof(struct img_header)`). Ad ogni iterazione avanziamo di `24` byte e applichiamo dinamicamente il cast `(struct img_dirent *)` per leggere `entry->name`.
+- **Confronto stringhe bare-metal:** senza `strcmp` (e non potendo usare `==`, che confronterebbe solo gli indirizzi), il ciclo interno confronta i due array carattere per carattere fino a 16 byte fermandosi al terminatore `\0`.
+- **Stub temporaneo:** se `file_found == 0`, la funzione ritorna `-2` (file non trovato). Se il file viene trovato, ritorna temporaneamente `-1` in attesa dell'innesto del program loader ELF.
+
+```

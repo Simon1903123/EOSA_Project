@@ -175,6 +175,9 @@ PROG_ELF:= $(foreach m,$(PROG_MAP),$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf)
 # Programs: build every program in programs/ into a .elf file in build/programs/
 programs: $(PROG_ELF)
 
+# Default goal: build the kernel, every program and the real fs.img.
+all: image
+
 # PROG_RULE is a template for one program: it builds build/programs/NAME.elf
 # from programs/SOURCE, the runtime files and prog.ld. $$@ is the target,
 # escaped so that it is expanded when make runs the recipe.

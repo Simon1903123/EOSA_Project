@@ -1,0 +1,13 @@
+# Fine riga: nel repo e nella cartella di lavoro sempre LF (Linux).
+* text=auto eol=lf
+
+# File binari: mai convertiti.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.zip binary
+*.img binary
+*.axf binary
+*.elf binary
+*.bin binary
+*.o binary
