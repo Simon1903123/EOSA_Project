@@ -32,6 +32,8 @@
 #include "drivers/systick.h"
 #include "kernel/task.h"
 #include "kernel/trace.h"
+#include "kernel/loader.h"
+
 extern uint32_t __fs_image_start; 
 
 struct img_header {
@@ -257,7 +259,7 @@ struct img_header *img = (struct img_header *)&__fs_image_start;
     /* Controllo Limiti e Prevenzione Overflow:
      * Calcoliamo dove finisce la directory (inizio + numero di file * 24 byte). */
     uint32_t directory_end = img->directory_offset + (img->count * 24);
-    
+
     /* Usiamo l'OR logico (||) invece del bitwise OR (|).
      * 1° check: Se directory_end è minore della partenza, c'è stato un integer overflow.
      * 2° check: Se la fine sfora la dimensione totale dell'immagine dichiarata, è un errore. */
@@ -271,10 +273,10 @@ struct img_header *img = (struct img_header *)&__fs_image_start;
 
 static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
 {
-    //a0 indice 
+    //a0 indice
     //a1 puntatore al buffer
     //a2 dimensione del buffer
-    
+
     /* 1. Controllo validità immagine e indice */
     uint32_t count = sys_image_count_impl(0, 0, 0);
     if (count == (uint32_t)-1 || a0 >= count) {
@@ -312,68 +314,194 @@ static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return (uint32_t)-1;
 }
 
+#define SLOT_SIZE 4096u /*ogni slot: 4KB */
+#define PROGRAM_MAX 3072u /*programma: massimo 3Kb, il resto è stack */
+#define FLASH_LIMIT 0x00400000u /*la flash va da 0 a questo indirizzo */
+#define LOADER_EXECUTABLE 1 /*flag executable per la MPU */
+
+/*inizio dei 4 slot di ram (0x20002000), il simbolo lo esporta il linker script */
+extern uint32_t __program_slots_start[];
+
+/*controlla se il chiamante (kernel) può leggere i byte nella partizione [p, p + len ) */
+static int caller_can_read( uint32_t p, uint32_t len )
+{
+	const struct tcb *t = tcb_current;
+
+	return (t != 0 && in_range(p, len, t->part_start, t->part_end ) ) || in_range(p, len, 0x00000000u, FLASH_LIMIT ) ;
+}
+
+/*copia nel nel buffer dst del kernel il nome del programma all'indirizzo a0*/
+static int copy_name( uint32_t a0, char dst[16] )
+{
+	const char *src = ( const char * ) a0;
+
+	for ( uint32_t i = 0; i < 16; i++ )
+	{
+		if ( !caller_can_read( a0, i + 1 ) )
+			return -1;
+		dst[i] = src[i];
+		if ( dst[i] == '\0' )  /*controlla se un carattere è NULL*/
+			return i == 0 ? -1 : 0; /*se il primo carattere è NULL, restituisci -1, altrimenti 0*/
+	}
+	return -1;  /*ritorna -1 se non c'è nessun valore NULL nei primi 16 byte*/
+}
+
+static const struct img_dirent *img_entry( uint32_t i )
+{
+	const struct img_header *h = ( const struct img_header * ) &__fs_image_start;
+	
+	return ( const struct img_dirent * ) ( ( uint32_t ) h + h->directory_offset + i * 24u );
+}
+
+static int name_char_ok( char c )
+{
+	return ( c >= 'A' && c <= 'Z' ) || ( c >= 'a' && c <= 'z' ) || (c >= '0' && c <= '9' ) || c == '_' || c == '-';
+}
+
+/*confronta i nomi inseriti un carattere alla volta*/
+static int same_name( const char *a, const char *b ) 
+{
+	for (int k = 0; k < 16; k++ )
+	{
+		if ( a[k] != b[k] )
+			return 0;
+		if ( a[k] == '\0' )
+			return 1;
+	}
+	return 1;
+}
+
+static int image_valid( void )
+{
+	/*l'intestazione dell'immagine viene già controllata da svc 11*/
+	uint32_t count = sys_image_count_impl( 0, 0, 0 );
+	if ( count == (uint32_t) -1 )
+		return 0;
+	
+	const struct img_header *h = ( const struct img_header * ) &__fs_image_start;
+	uint32_t dir_end = h->directory_offset + count * 24u; /*non c'è overflow, già controllato in svc 11*/
+	uint32_t contents_start = ( dir_end + 3u ) & ~3u; /*fine directory, arrotondata a multiplo di 4*/
+	for ( uint32_t i = 0; i < count; i++ )
+	{
+		const struct img_dirent *e = img_entry( i );
+		/*controllo del nome*/
+		uint32_t n = 0;
+		while ( n < 16 && e->name[n] != '\0' )
+		{
+			if ( !name_char_ok( e->name[n] ) )
+				return 0;
+			n++;
+		}
+		if ( n == 0 || n == 16 )
+			return 0;
+		
+		/*offset multiplo di 4, dimensione almeno 40 */
+		if ( ( e->offset & 3u ) != 0 || e->size < 40u )
+			return 0;
+		
+		/*il file sta dopo la directory e dentro l'immagine (senza overflow)*/
+		if ( e->offset < contents_start ) 
+			return 0;
+		if( e->offset > h->image_size || e->size > h->image_size - e->offset )
+			return 0;
+		
+		/*confronto della voce e con ogni voce precedente, se c'è sovrapposizione ritorna 0 */
+		for ( uint32_t j = 0; j < i; j++ )
+		{
+			const struct img_dirent *o = img_entry( j );
+
+			if ( same_name( e->name, o->name ) )
+				return 0;
+			if ( e->offset < o->offset + o->size && o->offset < e->offset + e->size )
+				return 0;
+		}
+	}
+	return 1;
+}
+
+/*cerca nella directory la voce il cui nome è uguale a name. se non c'è restituisci -2 altrimenti tieni il puntatore della voce (found) e da lì ricaviamo offset e size del file ELF*/
+/**/
+static const struct img_dirent *find_entry( const char *name )
+{
+	const struct img_header *h = ( const struct img_header * ) &__fs_image_start;
+	
+	for ( uint32_t i = 0; i < h->count; i++ )
+		if ( same_name( name, img_entry( i )->name ) )
+			return img_entry( i );
+	return 0;
+}
+
+/*trova il primo slot libero, restituisce -1 se sono tutti occupati */
+/*PROGRAM_SLOT_COUNT si trova in kernel/task.h*/
+static int first_free_slot ( void )
+{
+	for ( unsigned s = 0; s < PROGRAM_SLOT_COUNT;  s++ )
+		if( task_program_slot_free( s ) )
+			return ( int ) s;
+	return  -1;
+}
+
+/*ricontrolla il piano di Gianluigi e Athena. legge i byte de file e controlla che stiano in [0, size), poi controlla che i byte da 0 a copy_size da copiare e quelli azzerati da bss_start a bss_end siano nei limiti di 3072. alla fine controlla che l'intervallo nel bss abbia senso*/
+static int plan_inside_limits( const struct load_plan *p, uint32_t size )
+{
+	return p->file_off <= size && p->copy_size <= size - p->file_off && p->copy_size <= PROGRAM_MAX && p->bss_end <= PROGRAM_MAX && p->bss_start <= p->bss_end;
+}
+
 static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
 {
     //a0 = nome del file che vogliamo runnare
     (void) a1;
     (void) a2;
-    const struct tcb *t = tcb_current;
-
-    /* 1. Pointer Guard: La stringa deve essere in RAM (utente) o in FLASH statica */
-    uint32_t in_ram = (t != 0 && in_range(a0, 16, t->part_start, t->part_end));
-    uint32_t in_flash = in_range(a0, 16, 0x00000000, 0x00400000);
+    /*copia il nome del programma, se è valido restituisce 0, con -1 abbiamo error: program cannot be loaded*/ 
+    char name[16];
+    if ( copy_name( a0, name ) != 0 )
+    	return ( uint32_t ) -1;
+    /*se l'immagine non è valida, restituisci -1 (la shell non distingue i due casi*/
+    if ( !image_valid() )
+	return ( uint32_t ) -1;
+    /*trovo l'entry dell'immagine (found) a partire dal name */
+    const struct img_dirent *found = find_entry ( name );
+    if ( found == 0 )
+	return ( uint32_t ) -2;
+    /*scelgo il primo slot libero e imposto i suoi parametri*/
+    int slot = first_free_slot();
+    if ( slot < 0 )
+	return ( uint32_t ) -3; /*error: no free slot*/
     
-    if (!in_ram && !in_flash) {
-        return (uint32_t)-1;
-    }
+    /*slot_base è l'indirizzo dove inizia lo slot libero = indirizzo del primo slot + slot * 4096, spostandosi di 4096 byte per ogni slot*/
+    uint32_t slot_base = ( uint32_t ) __program_slots_start + ( uint32_t ) slot * SLOT_SIZE;
+    /*f punta all'elf direttamente in FLASH. prende il primo byte dell'immagine e avanza di offset byte*/
+    const uint8_t *f = ( const uint8_t * ) &__fs_image_start + found->offset;
+    uint32_t size = found->size; /*dimensione dell'immagine*/
+     
+     /*crea il piano nello staco del kernel e mette a zero tutti i campi */
+     /*controlla i piani di Gianluigi e Athena*/
+     struct load_plan plan = { 0 };
+     if ( elf_check_layout( f, size, &plan ) != 0 )
+	return ( uint32_t ) -4;
+     if ( elf_check_relocs( f, size, &plan ) != 0 )
+	return ( uint32_t ) -4;
+     if ( !plan_inside_limits( &plan, size ) )
+	return ( uint32_t ) -4;
 
-    /* 2. Controllo validità immagine (riutilizziamo la nostra funzione!) */
-    uint32_t count = sys_image_count_impl(0, 0, 0);
-    if (count == (uint32_t)-1) {
-        return (uint32_t)-1;
-    }
+     /*questi controlli sono necessari per la copia di dati e azzeramento bss*/
+     uint8_t *dst = ( uint8_t * ) slot_base;
+     for ( uint32_t i = 0; i < plan.copy_size; i++ )
+     	dst[i] = f[plan.file_off + i];
+     for ( uint32_t i = plan.bss_start; i < plan.bss_end; i++ )
+     	dst[i] = 0;
+     elf_apply_relocs( f, slot_base );
+     /*creazione del task*/
+     /*executable (1) è il flag che task_switch_context passa a mpu_set_task_region. a 1 la regione ram del task è eseguibile, a 0 no. il valore giusto di executable dipende dalla MPU che scrive Giulio*/
+     int id = task_program_create ( ( unsigned ) slot, name, ( void ( * )( void ) ) ( slot_base + plan.entry ), (uint32_t * ) ( slot_base + SLOT_SIZE ), LOADER_EXECUTABLE );
+     if ( id < 0 )
+     	return ( uint32_t ) -4;
 
-    struct img_header *img = (struct img_header *)&__fs_image_start;
-    char *nome_richiesto = (char *)a0;
-    struct img_dirent *file_found = 0;
+     /*quando Giulio aggiunge il campo a struct tcb in task.h, togli il commento*/
+     /*tasks[PROGRAM_TASK_FIRST + slot].code_end = plan.code_end*/
+     return ( uint32_t ) id;
 
 
-    /* 3. Scansione della directory */
-    for (uint32_t i = 0; i < count; i++) {
-        //Indirizzo base + offset dell'header della directory + (24byte per ogni file) * indice del programma che vogliamo runnare
-        uint32_t entry_addr = (uint32_t)img + img->directory_offset + (i * 24);
-        struct img_dirent *entry = (struct img_dirent *)entry_addr;
-        int uguali = 1;
-        
-        /* 3. Ciclo secondario: confronto carattere per carattere (max 16 byte) */
-        for(int k = 0; k < 16; k++){
-            if (nome_richiesto[k] != entry->name[k]) {
-                uguali = 0; /* Trovata una lettera diversa! */
-                break;      /* Interrompe SOLO il ciclo 'for' interno (variabile k) */
-            }
-            
-            if (nome_richiesto[k] == '\0') {
-                /* Entrambi i caratteri sono uguali e sono il terminatore. 
-                 * La parola è finita e combacia perfettamente. */
-                break;
-            }
-        }
-        if(uguali == 1){
-            file_found = entry; 
-            break;
-        }
-    }
-
-    /* 5. Gestione del fallimento (siamo fuori dal ciclo principale) */
-    if (file_found == 0) {
-        return (uint32_t)-2; /* Errore da specifiche: file non trovato */
-    }
-
-    /* ========================================================= */
-    /* QUI INIZIERA' IL LAVORO DEL LOADER VERO E PROPRIO         */
-    /* Abbiamo la voce esatta (file_trovato). Ora bisogna        */
-    /* trovare uno slot RAM e caricare il file ELF.              */
-    /* ========================================================= */
 
     return (uint32_t)-1; /* Temporaneo, in attesa del codice del tuo compagno */
 }
