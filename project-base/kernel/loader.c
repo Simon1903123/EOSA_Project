@@ -226,6 +226,12 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
             uint32_t rtype = r_info & 0xFF;
             uint32_t sym   = r_info >> 8;
 
+            if (rtype != R_ARM_ABS32 && rtype != R_ARM_THM_CALL && rtype != R_ARM_THM_JUMP24)
+            {
+                kprintf("loader: unsupported relocation type %u\n", rtype);
+                return -4;
+            }
+
             /* Il simbolo esiste? Deve essere uno dei nsyms della tabella.
              * Va controllato PRIMA di leggerlo: un indice enorme ci farebbe
              * leggere fuori dal file. */
