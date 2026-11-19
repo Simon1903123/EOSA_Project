@@ -433,9 +433,12 @@ int elf_check_layout( const uint8_t *f, uint32_t size, struct load_plan *p )
 {
     /*
      * The "notebook" of layer 2: a local variable on the stack, so no
-     * globals. Zeroed so that unfinished steps never leave garbage.
+     * globals. Not initialized with = { 0 }: the kernel is built with
+     * -nostdlib, and gcc turns that into a call to memset, which does not
+     * exist there (link error). It is not needed: check_header and
+     * check_segments write every field before anyone reads it.
      */
-    struct elf_view v = { 0 };
+    struct elf_view v;
 
     /*
      * Steps 2.1 and 2.2. With || check_segments() does not run if
