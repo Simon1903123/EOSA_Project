@@ -32,6 +32,10 @@
 #include "drivers/systick.h"
 #include "kernel/task.h"
 #include "kernel/trace.h"
+
+#include "kernel/loader.h"
+#include "kernel/kprintf.h"
+
 extern uint32_t __fs_image_start; 
 
 struct img_header {
@@ -368,6 +372,9 @@ static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     if (file_found == 0) {
         return (uint32_t)-2; /* Errore da specifiche: file non trovato */
     }
+
+
+
 
     /* ========================================================= */
     /* QUI INIZIERA' IL LAVORO DEL LOADER VERO E PROPRIO         */
