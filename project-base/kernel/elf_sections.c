@@ -21,6 +21,7 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
     uint32_t code_end = 0;
     int seen_write = 0;
     int entry_ok = 0;
+    uint32_t first_writable_addr = 0xFFFFFFFFu;
     uint32_t entry = v->entry & ~1u;
     uint32_t i;
 
@@ -74,7 +75,13 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
         }
     }
 
-    if ( !entry_ok )
+    if ( !entry_ok ) return -4;
+
+    /*la prima area scrivibile deve iniziare in una regione da 512 B
+       diversa da quella dove finisce il codice, così W^X vale a livello
+       di regione */
+    if ( first_writable_addr != 0xFFFFFFFFu &&
+         first_writable_addr < ( ( code_end + 511u ) & ~511u ) )
         return -4;
 
     p->code_end = code_end;
