@@ -63,6 +63,7 @@ struct tcb {
     uint32_t wait_id;           /* if WAITING: loaded task being joined */
     uint32_t *wait_result;      /* caller's saved r0, completed by task exit */
     uint8_t executable;         /* project MPU policy input */
+    uint32_t code_size;
 };
 
 #define PROGRAM_SLOT_COUNT 4
@@ -126,5 +127,7 @@ int task_current_is_program( void );
  * the old task's registers: choose the next task (round robin) and make
  * it the current one (tcb_current, states, MPU region 1). */
 void task_switch_context( void );
+
+void task_program_set_code_size(unsigned slot, uint32_t code_size);
 
 #endif /* TASK_H */

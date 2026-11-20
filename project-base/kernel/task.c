@@ -162,6 +162,7 @@ void task_configure_shell( const char *name, void ( *entry )( void ),
     t->data_end = data_end;
     t->data_load = data_load;
     t->executable = 0;
+    t->code_size = 0;
 }
 
 uint32_t task_start_first( void )
@@ -309,6 +310,7 @@ int task_program_create( unsigned slot, const char *name,
                          void ( *entry )( void ), uint32_t *stack_top,
                          int executable )
 {
+    
     if ( !task_program_slot_free( slot ) || entry == 0 )
         return -1;
     uint32_t base = (uint32_t) __program_slots_start + slot * PROGRAM_SLOT_SIZE;
@@ -316,6 +318,7 @@ int task_program_create( unsigned slot, const char *name,
         return -1;
 
     struct tcb *t = &tasks[PROGRAM_TASK_FIRST + slot];
+    t->code_size = 0 ;
     unsigned i = 0;
     while ( i + 1 < sizeof( program_names[slot] ) && name[i] != '\0' )
     {
@@ -375,6 +378,7 @@ static void complete_program( int status )
     completed_id[slot] = id;
     completed_status[slot] = status;
     tcb_current->state = TASK_UNUSED;
+    tcb_current->code_size = 0;
     for ( unsigned i = 0; i < NUM_APP_TASKS; i++ )
     {
         if ( tasks[i].state == TASK_WAITING && tasks[i].wait_id == id )
@@ -446,14 +450,25 @@ void task_switch_context( void )
     /* MPU region 1 = the new task's partition. From now on the old
      * task's partition is off limits, so isolation holds across the
      * switch. */
-    mpu_set_task_region( next->part_start, next->part_end - next->part_start,
-                         next->executable );
-
+    if(next->executable && next->code_size > 0){
+        mpu_set_program_regions(next->part_start, next->part_end - next->part_start, next->code_size);
+    }else{
+        mpu_set_task_region( next->part_start, next->part_end - next->part_start,
+                         next->executable );  
+    }
+     
     /* Write the switch in the trace, but only if the task really
      * changed (a task that keeps the CPU is not a switch). The
      * pointer difference is the index in the task table. */
     if ( next != old )
     {
         trace_record_switch( old - tasks, next - tasks );
+    }
+}
+
+
+void task_program_set_code_size(unsigned slot, uint32_t code_size){
+    if(slot < PROGRAM_SLOT_COUNT){
+        tasks[PROGRAM_TASK_FIRST + slot].code_size = code_size;
     }
 }
