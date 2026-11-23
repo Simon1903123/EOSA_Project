@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "All common tests required by the small SFT1 loader",
+  "tests": [
+    {"name": "nonzero_slot_relocation", "expected": "small/expected/nonzero_slot_relocation.json"},
+    {"name": "global_state", "expected": "small/expected/global_state.json"},
+    {"name": "thumb_ptr", "expected": "small/expected/thumb_ptr.json"},
+    {"name": "normal_return", "expected": "small/expected/normal_return.json"},
+    {"name": "explicit_exit", "expected": "small/expected/explicit_exit.json"},
+    {"name": "kernel_store", "expected": "small/expected/kernel_store.json"},
+    {"name": "bad_magic", "expected": "small/expected/bad_magic.json"},
+    {"name": "bad_header", "expected": "small/expected/bad_header.json"},
+    {"name": "too_large", "expected": "small/expected/too_large.json"},
+    {"name": "bad_reloc", "expected": "small/expected/bad_reloc.json"}
+  ]
+}

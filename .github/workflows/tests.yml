@@ -1,0 +1,70 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The Makefile and the sources live in project-base/, not in the repository root.
+defaults:
+  run:
+    working-directory: project-base
+
+jobs:
+  host-tool:
+    name: Host tool unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Test IMG1 validation and packing
+        run: python3 -m unittest discover -s tools -v
+
+  build-and-validate:
+    name: Kernel build and big-suite configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate big-suite configuration
+        run: make test-list
+
+      - name: Install ARM compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gcc-arm-none-eabi
+
+      - name: Build kernel
+        run: make
+
+  big-suite:
+    name: Big suite in QEMU
+    # Run independently so failures in other checks do not skip runtime feedback.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install compiler and emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends gcc-arm-none-eabi qemu-system-arm
+
+      - name: Build fixtures and run big suite
+        run: make test

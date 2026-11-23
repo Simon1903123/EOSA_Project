@@ -1,0 +1,4 @@
+{
+  "commands": ["run kernel_store", "run print_plain"],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run kernel_store\nloader: kernel_store slot=0 base=0x20002000 id=4\nkernel_store: writing 0x20000000\nMemManage in loaded program: CFSR=0x82 address=0x20000000\nprogram kernel_store faulted\nscratch> run print_plain\nloader: print_plain slot=0 base=0x20002000 id=8\nprint_plain: hello from a loaded program\nprogram print_plain exited\nscratch> "
+}

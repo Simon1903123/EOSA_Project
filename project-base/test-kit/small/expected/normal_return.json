@@ -1,0 +1,4 @@
+{
+  "commands": ["run normal_return"],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run normal_return\nloader: normal_return slot=0 base=0x20002000 id=4\nnormal_return: returning from main\nprogram normal_return exited\nscratch> "
+}

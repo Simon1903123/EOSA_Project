@@ -79,7 +79,7 @@ QEMU := qemu-system-arm -machine mps2-an385 -monitor null -nographic -serial std
 QEMU += -device loader,file=$(IMAGE),addr=$(IMAGE_ADDR),force-raw=on
 
 # These targets are command names, not files on disk.
-.PHONY: all clean image run debug run-trace test programs
+.PHONY: all clean image run debug run-trace test test-small test-big test-list programs format format-check
 
 # Default goal: build the image.
 all: $(BIN)
@@ -136,11 +136,41 @@ debug: $(BIN) $(IMAGE)
 run-trace: $(BIN) $(IMAGE)
 	$(QEMU) -d unimp
 
-# Task 5.2 will publish the common test kit. Do not report a false pass
-# while that suite is intentionally absent.
-test:
-	@printf '%s\n' 'make test: unavailable until the common project test kit is implemented (OpenSpec task 5.2).'
-	@exit 2
+# ---------------------------------------------------------------------------
+# Tests (used by .github/workflows/tests.yml)
+# ---------------------------------------------------------------------------
+# The instructor's common test kit, copied into the repository so that CI finds it.
+TEST_KIT ?= test-kit
+# NAME=build/programs/NAME.elf for every PROG_MAP entry (PROG_MAP is defined below;
+# '=' expands it when the recipe runs).
+TEST_PROGS = $(foreach m,$(PROG_MAP),$(word 1,$(subst :, ,$(m)))=$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf)
+
+# List the tests of both suites. Needs only python3.
+test-list:
+	python3 $(TEST_KIT)/run_tests.py --suite small --list
+	python3 $(TEST_KIT)/run_tests.py --suite big --list
+
+# Let the test kit pack its own image from our ELF files (plus the broken
+# files it adds), then run the suite in QEMU.
+test-small test-big: test-%: $(BIN) programs
+	python3 $(TEST_KIT)/$*/generate_fixtures.py --output-dir $(BUILD_DIR)/test-kit/$*/files --image $(BUILD_DIR)/test-kit/$*/fs.img $(TEST_PROGS)
+	python3 $(TEST_KIT)/run_tests.py --suite $* --kernel $(BIN) --image $(BUILD_DIR)/test-kit/$*/fs.img
+
+test: test-small test-big
+
+# ---------------------------------------------------------------------------
+# Formatting (used by .github/workflows/format.yml)
+# ---------------------------------------------------------------------------
+# Same clang-format version as the CI runner.
+CLANG_FORMAT ?= clang-format-18
+# Our C sources and headers; the test-kit programs (programs/*.c) stay as distributed.
+FORMAT_SRCS = $(foreach d,boot kernel drivers lib src include programs/lib,$(wildcard $(d)/*.c $(d)/*.h))
+
+format:
+	$(CLANG_FORMAT) -i $(FORMAT_SRCS)
+
+format-check:
+	$(CLANG_FORMAT) --dry-run --Werror $(FORMAT_SRCS)
 
 # Remove every generated file, demo and quantum build, build/programs/, build/fs.img e build/scratch-os.axf included.
 clean:
