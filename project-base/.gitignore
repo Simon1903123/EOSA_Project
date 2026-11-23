@@ -2,3 +2,4 @@ build/*
 !build/fs.img
 !build/scratch-os.axf
 .vscode
+__pycache__/

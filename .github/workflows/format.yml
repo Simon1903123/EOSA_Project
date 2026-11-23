@@ -1,0 +1,51 @@
+name: Formatting
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The Makefile and the sources live in project-base/, not in the repository root.
+defaults:
+  run:
+    working-directory: project-base
+
+jobs:
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      # clang-format-18 is already included in the Ubuntu 24.04 runner image.
+      - name: Check formatting
+        run: |
+          clang-format-18 --version
+          make format-check
+
+  black:
+    name: black
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Install Black
+        run: |
+          python3 -m venv "$RUNNER_TEMP/black"
+          "$RUNNER_TEMP/black/bin/python" -m pip install black==26.1.0
+
+      - name: Check Python formatting
+        run: '"$RUNNER_TEMP/black/bin/black" --check --diff .'

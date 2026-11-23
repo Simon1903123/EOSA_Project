@@ -1,0 +1,14 @@
+{
+  "commands": [
+    "run wx_write_code",
+    "run print_plain"
+  ],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run wx_write_code\nloader: wx_write_code slot=0 base=0x20002000 id=4\nwx_write_code: storing into code\nMemManage in loaded program: CFSR=0x82 address=<CODE_ADDRESS>\nprogram wx_write_code faulted\nscratch> run print_plain\nloader: print_plain slot=0 base=0x20002000 id=8\nprint_plain: hello from a loaded program\nprogram print_plain exited\nscratch> ",
+  "address_ranges": {
+    "<CODE_ADDRESS>": {
+      "min": "0x20002000",
+      "max": "0x20002fff",
+      "even": true
+    }
+  }
+}

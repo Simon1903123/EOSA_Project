@@ -1,0 +1,10 @@
+{
+  "image": "fs.img",
+  "fresh_boot_per_fixture": true,
+  "fixtures": [
+    {"name": "bad_rel_type", "test": "unsupported_reloc", "kind": "malformed_elf", "case": "allocated R_ARM_ABS32 changed to unsupported R_ARM_REL32 (type 3)", "expected": "expected/unsupported_reloc.json"},
+    {"name": "truncated_elf", "kind": "malformed_elf", "case": "file ends inside its final PT_LOAD; that segment and the section table extend beyond EOF", "expected": "expected/truncated_elf.json"},
+    {"name": "wx_write_code", "kind": "program", "source": "programs/wx_write_code.c", "expected": "expected/wx_write_code.json"},
+    {"name": "wx_exec_data", "kind": "program", "source": "programs/wx_exec_data.c", "expected": "expected/wx_exec_data.json"}
+  ]
+}

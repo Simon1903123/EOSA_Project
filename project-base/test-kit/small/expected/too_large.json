@@ -1,0 +1,4 @@
+{
+  "commands": ["run too_large", "help"],
+  "uart": "scratch-os: kernel started\nscheduler: round robin, quantum 5 ticks\nscratch> run too_large\nerror: program cannot be loaded\nscratch> help\nhelp - show commands\nls - list programs\nrun <name> - run a program\nscratch> "
+}

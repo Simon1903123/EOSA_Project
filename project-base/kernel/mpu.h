@@ -24,4 +24,6 @@ void mpu_init( void );
  * size. Called by the kernel just before it starts a task. */
 void mpu_set_task_region( uint32_t base, uint32_t size, int executable );
 
+void mpu_set_program_regions( uint32_t slot_base, uint32_t slot_size, uint32_t code_size );
+
 #endif /* MPU_H */
