@@ -197,6 +197,7 @@ typedef struct
 #define MPU_RASR_AP( v ) ( (uint32_t) ( v ) << 24 ) /* access permissions, 3 bits */
 #define MPU_RASR_XN ( 1UL << 28 ) /* execute never: no instruction fetch from here */
 #define MPU_AP_PRIV_RW_USER_NONE 1UL          /* AP=001: privileged read/write, unprivileged no access */
+#define MPU_AP_PRIV_RW_USER_RO 2UL /* AP=010: privileged read/write, unprivileged read only */
 #define MPU_AP_FULL_RW 3UL          /* AP=011: read/write for everyone */
 #define MPU_AP_RO 6UL          /* AP=110: read only for everyone */
 

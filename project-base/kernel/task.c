@@ -457,8 +457,9 @@ void task_switch_context( void )
     }
     else
     {
-        mpu_set_task_region( next->part_start, next->part_end - next->part_start,
-                             next->executable );
+        /* Big version: a whole-slot region is never executable. A
+         * program without code_size faults instead of running RWX. */
+        mpu_set_task_region( next->part_start, next->part_end - next->part_start, 0 );
     }
 
     /* Write the switch in the trace, but only if the task really

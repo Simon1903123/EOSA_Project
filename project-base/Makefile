@@ -81,8 +81,8 @@ QEMU += -device loader,file=$(IMAGE),addr=$(IMAGE_ADDR),force-raw=on
 # These targets are command names, not files on disk.
 .PHONY: all clean image run debug run-trace test test-small test-big test-list programs format format-check
 
-# Default goal: build the image.
-all: $(BIN)
+# Default goal: build the kernel, every program and the real fs.img.
+all: image
 
 # Compile one .c file to a .o file, creating its build folder first.
 $(BUILD_DIR)/%.o: %.c
@@ -101,22 +101,15 @@ $(BUILD_DIR)/%.o: %.s
 $(BIN): $(OBJECTS) scripts/mps2_m3.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJECTS) -o $(BIN)
 
-# Temporary valid raw image for QEMU's generic loader. The project packer
-# will replace this recipe once the image format contract is implemented.
-$(IMAGE):
-	@mkdir -p $(dir $@)
-	@printf 'SCRATCH-OS-PROJECT-IMAGE\n' > $@
-
 # Build the real image: depends on the kernel and on all programs (make programs).
 # Then packs every NAME=build/programs/NAME.elf from PROG_MAP(see end of Makefile) with mkimage.py.
-# This overwrites the placeholder created by the $(IMAGE) rule above.
 image: $(BIN) programs
 	@test -f $(IMAGE_TOOL) || { printf '%s\n' 'make image: implement tools/mkimage.py first'; exit 2; }
 	@test -d $(PROGRAM_DIR) || { printf '%s\n' 'make image: programs/ is missing'; exit 2; }
 	python3 $(IMAGE_TOOL) image $(IMAGE) $(foreach m,$(PROG_MAP),$(word 1,$(subst :, ,$(m)))=$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf) # For each PROG_MAP entry (e.g., print_plain:print_plain.c), build NAME=build/programs/NAME.elf for mkimage.py.
 
 # Build, load the image at its fixed FLASH address, then run in QEMU.
-run: $(BIN) $(IMAGE)
+run: $(BIN) image
 	$(QEMU)
 
 # Same as `run`, but paused for a debugger:
@@ -128,12 +121,12 @@ run: $(BIN) $(IMAGE)
 #  for QUANTUM=2: build/quantum-2/scratch-os.axf)
 # and inside gdb:
 #   target remote :1234
-debug: $(BIN) $(IMAGE)
+debug: $(BIN) image
 	$(QEMU) -S -gdb tcp::1234
 
 # Same as `run`, plus `-d unimp`: QEMU prints a message whenever the
 # program touches a register or device that QEMU does not implement.
-run-trace: $(BIN) $(IMAGE)
+run-trace: $(BIN) image
 	$(QEMU) -d unimp
 
 # ---------------------------------------------------------------------------
@@ -204,9 +197,6 @@ PROG_ELF:= $(foreach m,$(PROG_MAP),$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf)
 
 # Programs: build every program in programs/ into a .elf file in build/programs/
 programs: $(PROG_ELF)
-
-# Default goal: build the kernel, every program and the real fs.img.
-all: image
 
 # PROG_RULE is a template for one program: it builds build/programs/NAME.elf
 # from programs/SOURCE, the runtime files and prog.ld. $$@ is the target,

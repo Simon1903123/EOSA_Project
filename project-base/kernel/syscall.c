@@ -208,6 +208,8 @@ static uint32_t sys_trace_dump_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return 0;
 }
 
+static int image_valid( void );
+
 /* Wait bookkeeping is supplied even though the untouched base has no loader.
  * Student loader code supplies SYS_PROGRAM_RUN and creates program tasks. */
 static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
@@ -219,12 +221,8 @@ static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return (uint32_t) task_wait_program( a0, &frame[0] );
 }
 
-static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+static uint32_t image_header_count( void )
 {
-    (void) a0;
-    (void) a1;
-    (void) a2;
-
     struct img_header *img = (struct img_header *) &__fs_image_start;
 
     /* 1. Controllo Magic Number (deve essere "IMG1") */
@@ -277,6 +275,20 @@ static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return img->count;
 }
 
+static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+{
+    (void) a0;
+    (void) a1;
+    (void) a2;
+
+    if ( !image_valid() )
+    {
+        return (uint32_t) -1;
+    }
+
+    return image_header_count();
+}
+
 static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
 {
     //a0 indice
@@ -310,7 +322,7 @@ static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     char *dest_buffer = (char *) a1;
 
     /* 5. Copia dei caratteri */
-    for ( uint32_t i = 0; i < a2 - 1; i++ )
+    for ( uint32_t i = 0; i < a2; i++ )
     {
         dest_buffer[i] = flash_name[i];
 
@@ -385,7 +397,7 @@ static int same_name( const char *a, const char *b )
 static int image_valid( void )
 {
  /*l'intestazione dell'immagine viene già controllata da svc 11*/
-    uint32_t count = sys_image_count_impl( 0, 0, 0 );
+    uint32_t count = image_header_count();
     if ( count == (uint32_t) -1 )
         return 0;
 
