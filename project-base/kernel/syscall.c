@@ -479,7 +479,7 @@ static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
      struct load_plan plan = { 0 };
      if ( elf_check_layout( f, size, &plan ) != 0 )
 	return ( uint32_t ) -4;
-     if ( elf_check_relocs( f, size, &plan ) != 0 )
+     if ( elf_check_relocs( f, size, &plan, slot_base ) != 0 )
 	return ( uint32_t ) -4;
      if ( !plan_inside_limits( &plan, size ) )
 	return ( uint32_t ) -4;
@@ -498,7 +498,7 @@ static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
      	return ( uint32_t ) -4;
 
      /*quando Giulio aggiunge il campo a struct tcb in task.h, togli il commento*/
-     /*tasks[PROGRAM_TASK_FIRST + slot].code_end = plan.code_end*/
+     tasks[PROGRAM_TASK_FIRST + slot].code_end = plan.code_end
      return ( uint32_t ) id;
 
 
