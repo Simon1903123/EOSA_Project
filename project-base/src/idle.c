@@ -26,6 +26,6 @@ void idle_task( void )
          * CPU: if a delayed task is READY again by then, the kernel
          * switches to it; otherwise the idle task loops and sleeps
          * again. */
-        __asm volatile ( "wfi" );
+        __asm volatile( "wfi" );
     }
 }

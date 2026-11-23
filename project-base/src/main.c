@@ -42,7 +42,7 @@ int main( void )
      * C equivalent (pseudo-C):
      *     svc(SYS_START_TASKS);   // never returns
      */
-    __asm volatile (
+    __asm volatile(
         "svc #5             \n" /* svc(SYS_START_TASKS) */
         : : : "memory" );
 

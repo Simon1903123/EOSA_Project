@@ -54,7 +54,7 @@ uint32_t elf_read16( const uint8_t *p )
     /* Each byte is widened to uint32_t before the shift; p[1] is moved
      * 8 bits up (times 256) and the two halves are joined with | (they
      * share no bits, so | works like a sum). */
-    return ( uint32_t ) p[0] | ( ( uint32_t ) p[1] << 8 );
+    return (uint32_t) p[0] | ( (uint32_t) p[1] << 8 );
 }
 
 /*
@@ -69,8 +69,8 @@ uint32_t elf_read32( const uint8_t *p )
 {
     /* Without the (uint32_t) cast, p[3] << 24 would be computed on a
      * signed int and overflow when p[3] >= 0x80. */
-    return ( uint32_t ) p[0] | ( ( uint32_t ) p[1] << 8 ) | ( ( uint32_t ) p[2] << 16 )
-           | ( ( uint32_t ) p[3] << 24 );
+    return (uint32_t) p[0] | ( (uint32_t) p[1] << 8 ) | ( (uint32_t) p[2] << 16 )
+           | ( (uint32_t) p[3] << 24 );
 }
 
 /*

@@ -78,16 +78,14 @@ void vformat( void ( *out )( char c, void *ctx ), void *ctx,
             out( (char) va_arg( ap, int ), ctx );
             break;
 
-        case 's':
-        {
+        case 's': {
             const char *s = va_arg( ap, const char * );
             /* Do not crash on a null pointer. */
             put_string( out, ctx, s != 0 ? s : "(null)" );
             break;
         }
 
-        case 'd':
-        {
+        case 'd': {
             int v = va_arg( ap, int );
             uint32_t mag;
             if ( v < 0 )

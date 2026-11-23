@@ -24,15 +24,15 @@ import sys
 # ---------------------------------------------------------------------------
 # IMG1 format constants (assignment section 6.1)
 # ---------------------------------------------------------------------------
-IMG_MAGIC = b"IMG1"            # bytes 49 4d 47 31
+IMG_MAGIC = b"IMG1"  # bytes 49 4d 47 31
 IMG_VERSION = 1
-HEADER_SIZE = 20               # header size
-ENTRY_SIZE = 24                # one directory entry
-NAME_FIELD_SIZE = 16           # up to 15 characters + NUL
+HEADER_SIZE = 20  # header size
+ENTRY_SIZE = 24  # one directory entry
+NAME_FIELD_SIZE = 16  # up to 15 characters + NUL
 MAX_PROGRAMS = 32
-MAX_IMAGE_SIZE = 0x00200000    # 2 MiB: 0x00200000..0x003fffff
-MIN_FILE_SIZE = 40             # every program file is at least 40 bytes
-ALIGNMENT = 4                  # every file starts at a multiple of 4
+MAX_IMAGE_SIZE = 0x00200000  # 2 MiB: 0x00200000..0x003fffff
+MIN_FILE_SIZE = 40  # every program file is at least 40 bytes
+ALIGNMENT = 4  # every file starts at a multiple of 4
 
 # Valid name: 1 to 15 characters from A-Z a-z 0-9 _ -
 NAME_RE = re.compile(r"[A-Za-z0-9_-]{1,15}")
@@ -83,8 +83,9 @@ def read_programs(parser, specs):
         entries.append((name, data))
 
     if len(entries) > MAX_PROGRAMS:
-        parser.error("too many programs: %d (maximum is %d)"
-                     % (len(entries), MAX_PROGRAMS))
+        parser.error(
+            "too many programs: %d (maximum is %d)" % (len(entries), MAX_PROGRAMS)
+        )
     return entries
 
 
@@ -94,7 +95,7 @@ def read_programs(parser, specs):
 def build_image(entries):
     """Return the whole image as a bytearray. ValueError if it is too large."""
     count = len(entries)
-    directory_offset = HEADER_SIZE                       # always 20
+    directory_offset = HEADER_SIZE  # always 20
     directory_end = directory_offset + count * ENTRY_SIZE
     contents_start = align_up(directory_end)
 
@@ -109,8 +110,7 @@ def build_image(entries):
     image_size = offsets[-1] + len(entries[-1][1])
     if image_size > MAX_IMAGE_SIZE:
         raise ValueError(
-            "image too large: %d bytes (maximum is %d)"
-            % (image_size, MAX_IMAGE_SIZE)
+            "image too large: %d bytes (maximum is %d)" % (image_size, MAX_IMAGE_SIZE)
         )
 
     # All zeros: padding and the bytes after each name's NUL are already 0.
@@ -118,20 +118,30 @@ def build_image(entries):
 
     # Header (20 bytes)
     struct.pack_into(
-        "<4sIIII", image, 0,
-        IMG_MAGIC, IMG_VERSION, image_size, count, directory_offset,
+        "<4sIIII",
+        image,
+        0,
+        IMG_MAGIC,
+        IMG_VERSION,
+        image_size,
+        count,
+        directory_offset,
     )
 
     # Directory (24 bytes per entry); "16s" pads the name with NUL bytes.
     for index, ((name, data), offset) in enumerate(zip(entries, offsets)):
         struct.pack_into(
-            "<16sII", image, directory_offset + index * ENTRY_SIZE,
-            name.encode("ascii"), offset, len(data),
+            "<16sII",
+            image,
+            directory_offset + index * ENTRY_SIZE,
+            name.encode("ascii"),
+            offset,
+            len(data),
         )
 
     # Program files, copied byte for byte.
     for (_name, data), offset in zip(entries, offsets):
-        image[offset:offset + len(data)] = data
+        image[offset : offset + len(data)] = data
 
     return image
 
@@ -145,8 +155,7 @@ def verify_image(image):
     if total < HEADER_SIZE:
         raise ValueError("image shorter than the header")
 
-    magic, version, image_size, count, dir_off = struct.unpack_from(
-        "<4sIIII", image, 0)
+    magic, version, image_size, count, dir_off = struct.unpack_from("<4sIIII", image, 0)
 
     if magic != IMG_MAGIC:
         raise ValueError("bad magic")
@@ -168,7 +177,7 @@ def verify_image(image):
     ranges = []
     for i in range(count):
         base = dir_off + i * ENTRY_SIZE
-        raw_name = bytes(image[base:base + NAME_FIELD_SIZE])
+        raw_name = bytes(image[base : base + NAME_FIELD_SIZE])
         offset, size = struct.unpack_from("<II", image, base + NAME_FIELD_SIZE)
 
         nul = raw_name.find(b"\0")
@@ -207,7 +216,7 @@ def write_output(parser, output, image):
     try:
         out_dir = os.path.dirname(output)
         if out_dir:
-            os.makedirs(out_dir, exist_ok=True)      # creates build/ if missing
+            os.makedirs(out_dir, exist_ok=True)  # creates build/ if missing
         tmp_path = output + ".tmp"
         with open(tmp_path, "wb") as f:
             f.write(image)
@@ -225,10 +234,15 @@ def main(argv=None):
         description="Pack ELF programs into an IMG1 image.",
     )
     parser.add_argument("command", choices=["image"])
-    parser.add_argument("output", metavar="OUTPUT",
-                        help="image file to write, e.g. build/fs.img")
-    parser.add_argument("programs", metavar="NAME=PROGRAM.elf", nargs="+",
-                        help="program name and its ELF file")
+    parser.add_argument(
+        "output", metavar="OUTPUT", help="image file to write, e.g. build/fs.img"
+    )
+    parser.add_argument(
+        "programs",
+        metavar="NAME=PROGRAM.elf",
+        nargs="+",
+        help="program name and its ELF file",
+    )
     args = parser.parse_args(argv)
 
     entries = read_programs(parser, args.programs)
@@ -245,8 +259,7 @@ def main(argv=None):
         sys.exit("mkimage.py: internal error: %s" % exc)
 
     write_output(parser, args.output, image)
-    print("IMG1: %s (%d bytes, %d programs)"
-          % (args.output, len(image), len(entries)))
+    print("IMG1: %s (%d bytes, %d programs)" % (args.output, len(image), len(entries)))
 
 
 if __name__ == "__main__":

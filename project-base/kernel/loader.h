@@ -6,8 +6,8 @@ struct load_plan {
     uint32_t mem_end;                /* fine del programma, <= 3072 */
 };
 
-int  elf_check_layout(const uint8_t *f, uint32_t size, struct load_plan *p); /* 0 / -4 */
+int elf_check_layout( const uint8_t *f, uint32_t size, struct load_plan *p ); /* 0 / -4 */
 
-int  elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p, uint32_t slot_base); /* 0 / -4 */
+int elf_check_relocs( const uint8_t *f, uint32_t size, const struct load_plan *p, uint32_t slot_base ); /* 0 / -4 */
 
-void elf_apply_relocs(const uint8_t *f, uint32_t slot_base);
+void elf_apply_relocs( const uint8_t *f, uint32_t slot_base );

@@ -7,68 +7,67 @@
 /* ------------------------------------------------------------------ */
 
 /* ELF header (Elf32_Ehdr): i due campi che servono a noi. */
-#define EH_SHOFF    32      /* e_shoff: dove inizia la tabella delle sezioni (4 byte) */
-#define EH_SHNUM    48      /* e_shnum: quante righe ha la tabella (2 byte) */
+#define EH_SHOFF 32      /* e_shoff: dove inizia la tabella delle sezioni (4 byte) */
+#define EH_SHNUM 48      /* e_shnum: quante righe ha la tabella (2 byte) */
 
 /* Una riga della tabella delle sezioni (Elf32_Shdr): 40 byte.
  * Questi sono i byte, dentro la riga, dove inizia ogni campo. */
-#define SHDR_SIZE   40
-#define SH_NAME      0      /* indice del nome in .shstrtab: non lo usiamo */
-#define SH_TYPE      4      /* tipo della sezione (REL, SYMTAB, ...) */
-#define SH_FLAGS     8      /* flag: W = 1, A = 2, X = 4 */
-#define SH_ADDR     12      /* dove va in memoria (= offset nello slot) */
-#define SH_OFFSET   16      /* dove sta il contenuto nel file */
-#define SH_SIZE     20      /* quanti byte di contenuto */
-#define SH_LINK     24      /* per una REL: riga della tabella dei simboli */
-#define SH_INFO     28      /* per una REL: riga della sezione da correggere */
-#define SH_ENTSIZE  36      /* lunghezza di una voce, se la sezione è una tabella */
+#define SHDR_SIZE 40
+#define SH_NAME 0      /* indice del nome in .shstrtab: non lo usiamo */
+#define SH_TYPE 4      /* tipo della sezione (REL, SYMTAB, ...) */
+#define SH_FLAGS 8      /* flag: W = 1, A = 2, X = 4 */
+#define SH_ADDR 12      /* dove va in memoria (= offset nello slot) */
+#define SH_OFFSET 16      /* dove sta il contenuto nel file */
+#define SH_SIZE 20      /* quanti byte di contenuto */
+#define SH_LINK 24      /* per una REL: riga della tabella dei simboli */
+#define SH_INFO 28      /* per una REL: riga della sezione da correggere */
+#define SH_ENTSIZE 36      /* lunghezza di una voce, se la sezione è una tabella */
 
 /* Valori dei campi. */
-#define SHT_SYMTAB   2      /* tipo: tabella dei simboli */
-#define SHT_REL      9      /* tipo: lista di relocation */
-#define SHF_ALLOC    0x2u   /* flag A: la sezione finisce nello slot */
+#define SHT_SYMTAB 2      /* tipo: tabella dei simboli */
+#define SHT_REL 9      /* tipo: lista di relocation */
+#define SHF_ALLOC 0x2u   /* flag A: la sezione finisce nello slot */
 
 /* Un record REL (Elf32_Rel): 8 byte. */
-#define REL_SIZE     8
-#define R_OFFSET     0      /* il "site": dove sta la cosa da correggere */
-#define R_INFO       4      /* tipo (byte basso) e indice del simbolo (24 bit alti) */
+#define REL_SIZE 8
+#define R_OFFSET 0      /* il "site": dove sta la cosa da correggere */
+#define R_INFO 4      /* tipo (byte basso) e indice del simbolo (24 bit alti) */
 
 /* Un simbolo (Elf32_Sym): 16 byte. */
-#define SYM_SIZE    16
-#define ST_SHNDX    14      /* sezione in cui è definito (2 byte); 0 = non definito */
-#define SHN_UNDEF    0
+#define SYM_SIZE 16
+#define ST_SHNDX 14      /* sezione in cui è definito (2 byte); 0 = non definito */
+#define SHN_UNDEF 0
 
 /* Tipi di relocation ammessi (ELF for the ARM Architecture). */
-#define R_ARM_ABS32       2u    /* word con un indirizzo completo: va corretta */
-#define R_ARM_THM_CALL   10u    /* chiamata Thumb (BL): relativa, non si tocca */
+#define R_ARM_ABS32 2u    /* word con un indirizzo completo: va corretta */
+#define R_ARM_THM_CALL 10u    /* chiamata Thumb (BL): relativa, non si tocca */
 #define R_ARM_THM_JUMP24 30u    /* salto Thumb (B.W): relativo, non si tocca */
 
 /* Read a little-endian 32-bit number from the 4 bytes starting at p.
  * Byte by byte, so p does not need to be a multiple of 4. */
-static uint32_t read32(const uint8_t *p)
+static uint32_t read32( const uint8_t *p )
 {
-    return  (uint32_t) p[0]
-         | ((uint32_t) p[1] << 8)
-         | ((uint32_t) p[2] << 16)
-         | ((uint32_t) p[3] << 24);
+    return (uint32_t) p[0]
+           | ( (uint32_t) p[1] << 8 )
+           | ( (uint32_t) p[2] << 16 )
+           | ( (uint32_t) p[3] << 24 );
 }
 
 /* Same for a 16-bit number: the 2 bytes starting at p. */
-static uint32_t read16(const uint8_t *p)
+static uint32_t read16( const uint8_t *p )
 {
-    return  (uint32_t) p[0]
-         | ((uint32_t) p[1] << 8);
+    return (uint32_t) p[0]
+           | ( (uint32_t) p[1] << 8 );
 }
 
 /* Is [off, off + len) inside a file of size bytes?
  * Written as len <= size - off so that off + len can never overflow. */
-static int fits(uint32_t off, uint32_t len, uint32_t size)
+static int fits( uint32_t off, uint32_t len, uint32_t size )
 {
     return len <= size && off <= size - len;
 }
 
-
-int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p, uint32_t slot_base)
+int elf_check_relocs( const uint8_t *f, uint32_t size, const struct load_plan *p, uint32_t slot_base )
 {
     /* ============================================================== */
     /* 3.1 Dove sta la tabella delle sezioni e quante righe ha.       */
@@ -78,8 +77,8 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
      * shoff = 0x4888, shnum = 25.
      * Non controlliamo che la tabella stia nel file: l'ha già fatto
      * elf_check_layout (Gianluigi e Athena) prima di chiamarci. */
-    uint32_t shoff = read32(f + EH_SHOFF);
-    uint32_t shnum = read16(f + EH_SHNUM);
+    uint32_t shoff = read32( f + EH_SHOFF );
+    uint32_t shnum = read16( f + EH_SHNUM );
 
     /* ============================================================== */
     /* 3.2 Scorriamo TUTTE le righe della tabella.                    */
@@ -88,7 +87,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
      * dipende dal programma. Le scopriamo leggendo il tipo di ognuna.
      * Ogni REL viene controllata per intero nel giro in cui la troviamo:
      * non serve memorizzare niente per dopo. */
-    for (uint32_t i = 0; i < shnum; i++)
+    for ( uint32_t i = 0; i < shnum; i++ )
     {
         /* Il posto della riga i: inizio del file + inizio della tabella
          * + i righe da 40 byte. È un puntatore, non un numero. */
@@ -96,7 +95,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
 
         /* Il tipo è un numero (REL = 9), non un nome: confrontiamo numeri.
          * Se non è una REL, il resto del giro non ci riguarda. */
-        if (read32(row + SH_TYPE) != SHT_REL)
+        if ( read32( row + SH_TYPE ) != SHT_REL )
         {
             continue;
         }
@@ -104,11 +103,11 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
         /* Siamo su una riga REL. Leggiamo i cinque campi che ci servono.
          * Sono le colonne Off, Size, ES, Lk, Inf di readelf -S.
          * Per .rel.text di thumb_ptr: 0x3cb8, 0x98, 8, 22, 1. */
-        uint32_t rel_off  = read32(row + SH_OFFSET);    /* dove iniziano i record nel file */
-        uint32_t rel_size = read32(row + SH_SIZE);      /* quanti byte di record */
-        uint32_t entsize  = read32(row + SH_ENTSIZE);   /* lunghezza di un record */
-        uint32_t link     = read32(row + SH_LINK);      /* riga della tabella dei simboli */
-        uint32_t info     = read32(row + SH_INFO);      /* riga della sezione da correggere */
+        uint32_t rel_off = read32( row + SH_OFFSET );    /* dove iniziano i record nel file */
+        uint32_t rel_size = read32( row + SH_SIZE );      /* quanti byte di record */
+        uint32_t entsize = read32( row + SH_ENTSIZE );   /* lunghezza di un record */
+        uint32_t link = read32( row + SH_LINK );      /* riga della tabella dei simboli */
+        uint32_t info = read32( row + SH_INFO );      /* riga della sezione da correggere */
 
         /* ========================================================== */
         /* 3.3 La sezione REL stessa è fatta bene?                    */
@@ -120,7 +119,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
         /* Ogni record è lungo 8 byte, e la sezione deve contenerne un
          * numero intero: altrimenti l'ultimo record sarebbe tagliato.
          * Basta che UNA delle due sia sbagliata per rifiutare: ||. */
-        if (entsize != REL_SIZE || rel_size % REL_SIZE != 0)
+        if ( entsize != REL_SIZE || rel_size % REL_SIZE != 0 )
         {
             return -4;
         }
@@ -130,7 +129,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
          * file (il programma successivo nell'immagine, o peggio).
          * È il controllo che ferma un ELF tagliato (test truncated_elf).
          * Si usa fits e non la somma, che potrebbe andare in overflow. */
-        if (!fits(rel_off, rel_size, size))
+        if ( !fits( rel_off, rel_size, size ) )
         {
             return -4;
         }
@@ -138,7 +137,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
         /* info e link sono NUMERI DI RIGA della stessa tabella: tra poco
          * andremo a leggere quelle righe, quindi devono esistere.
          * Basta che UNO dei due sia fuori dalla tabella: ||. */
-        if (info >= shnum || link >= shnum)
+        if ( info >= shnum || link >= shnum )
         {
             return -4;
         }
@@ -157,7 +156,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
          * Basta che i record stiano nel file, e l'abbiamo già visto al
          * 3.3. Quindi passiamo alla riga successiva della tabella.
          * Per thumb_ptr succede per 6 sezioni REL su 7. */
-        if ((read32(target + SH_FLAGS) & SHF_ALLOC) == 0)
+        if ( ( read32( target + SH_FLAGS ) & SHF_ALLOC ) == 0 )
         {
             continue;
         }
@@ -168,9 +167,9 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
          * - tgt_addr: dove inizia la sezione nello slot (colonna Addr);
          * - tgt_off:  dove inizia la sezione nel file  (colonna Off);
          * - tgt_size: quanto è lunga                   (colonna Size). */
-        uint32_t tgt_addr = read32(target + SH_ADDR);
-        uint32_t tgt_off  = read32(target + SH_OFFSET);
-        uint32_t tgt_size = read32(target + SH_SIZE);
+        uint32_t tgt_addr = read32( target + SH_ADDR );
+        uint32_t tgt_off = read32( target + SH_OFFSET );
+        uint32_t tgt_size = read32( target + SH_SIZE );
 
         /* ========================================================== */
         /* 3.5 La tabella dei simboli usata da questa REL.            */
@@ -181,19 +180,19 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
         const uint8_t *symrow = f + shoff + link * SHDR_SIZE;
 
         /* Deve essere davvero una tabella dei simboli, con voci da 16 byte. */
-        if (read32(symrow + SH_TYPE) != SHT_SYMTAB || read32(symrow + SH_ENTSIZE) != SYM_SIZE)
+        if ( read32( symrow + SH_TYPE ) != SHT_SYMTAB || read32( symrow + SH_ENTSIZE ) != SYM_SIZE )
         {
             return -4;
         }
 
         /* Dove stanno i simboli nel file e quanti byte occupano.
          * Per thumb_ptr: 0x377c e 0x3d0. */
-        uint32_t sym_off  = read32(symrow + SH_OFFSET);
-        uint32_t sym_size = read32(symrow + SH_SIZE);
+        uint32_t sym_off = read32( symrow + SH_OFFSET );
+        uint32_t sym_size = read32( symrow + SH_SIZE );
 
         /* Stesse regole dei record: un numero intero di simboli, tutti
          * dentro il file, perché tra poco li leggeremo. */
-        if (sym_size % SYM_SIZE != 0 || !fits(sym_off, sym_size, size))
+        if ( sym_size % SYM_SIZE != 0 || !fits( sym_off, sym_size, size ) )
         {
             return -4;
         }
@@ -209,7 +208,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
          * Sappiamo già (3.3) che sono tutti dentro il file. */
         uint32_t nrel = rel_size / REL_SIZE;
 
-        for (uint32_t r = 0; r < nrel; r++)
+        for ( uint32_t r = 0; r < nrel; r++ )
         {
             /* Il posto del record r: inizio dei record + r record da 8 byte. */
             const uint8_t *rec = f + rel_off + r * REL_SIZE;
@@ -217,25 +216,25 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
             /* I due campi del record. Sono le colonne Offset e Info di
              * readelf -r. Per il primo record di thumb_ptr:
              * site = 0x0, r_info = 0x350a. */
-            uint32_t site   = read32(rec + R_OFFSET);
-            uint32_t r_info = read32(rec + R_INFO);
+            uint32_t site = read32( rec + R_OFFSET );
+            uint32_t r_info = read32( rec + R_INFO );
 
             /* r_info contiene due informazioni in un numero solo:
              * - il tipo nel byte basso: 0x350a & 0xff = 0x0a = 10 (THM_CALL);
              * - l'indice del simbolo nei 24 bit alti: 0x350a >> 8 = 0x35 = 53 (main). */
             uint32_t rtype = r_info & 0xFF;
-            uint32_t sym   = r_info >> 8;
+            uint32_t sym = r_info >> 8;
 
-            if (rtype != R_ARM_ABS32 && rtype != R_ARM_THM_CALL && rtype != R_ARM_THM_JUMP24)
+            if ( rtype != R_ARM_ABS32 && rtype != R_ARM_THM_CALL && rtype != R_ARM_THM_JUMP24 )
             {
-                kprintf("loader: unsupported relocation type %u\n", rtype);
+                kprintf( "loader: unsupported relocation type %u\n", rtype );
                 return -4;
             }
 
             /* Il simbolo esiste? Deve essere uno dei nsyms della tabella.
              * Va controllato PRIMA di leggerlo: un indice enorme ci farebbe
              * leggere fuori dal file. */
-            if (sym >= nsyms)
+            if ( sym >= nsyms )
             {
                 return -4;
             }
@@ -250,7 +249,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
              * Un programma che usa un simbolo non definito non può
              * essere caricato: nessuno saprebbe dove punta.
              * È un campo da 2 byte: read16. */
-            if (read16(s + ST_SHNDX) == SHN_UNDEF)
+            if ( read16( s + ST_SHNDX ) == SHN_UNDEF )
             {
                 return -4;
             }
@@ -258,10 +257,9 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
             /* ====================================================== */
             /* 3.7 – 3.9 Controlli diversi secondo il tipo.           */
             /* ====================================================== */
-            switch (rtype)
+            switch ( rtype )
             {
-            case R_ARM_ABS32:
-            {
+            case R_ARM_ABS32: {
                 /* -------------------------------------------------- */
                 /* 3.7 ABS32: una word da 4 byte che contiene un      */
                 /* indirizzo completo. elf_apply_relocs le sommerà    */
@@ -272,7 +270,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
 
                 /* (a) Allineata a 4: una word intera, che poi si
                  * scriverà come uint32_t. 0x2d4 % 4 = 0: ok. */
-                if (site % 4 != 0)
+                if ( site % 4 != 0 )
                 {
                     return -4;
                 }
@@ -284,7 +282,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
                  * (site - tgt_addr), i 4 byte della word devono starci.
                  * È il controllo che ferma un site fuori dal programma
                  * (test bad_reloc): applicandolo scriveremmo fuori. */
-                if (site < tgt_addr || !fits(site - tgt_addr, 4, tgt_size))
+                if ( site < tgt_addr || !fits( site - tgt_addr, 4, tgt_size ) )
                 {
                     return -4;
                 }
@@ -293,7 +291,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
                  * file non ha byte: una word lì non avrebbe un valore
                  * originale da leggere. bss_start viene dal piano di
                  * Gianluigi e Athena; per thumb_ptr vale 0x310. */
-                if (!fits(site, 4, p->bss_start))
+                if ( !fits( site, 4, p->bss_start ) )
                 {
                     return -4;
                 }
@@ -304,11 +302,11 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
                  * avanti. Per sicurezza controlliamo che la sezione stia
                  * nel file, così anche quel posto ci sta.
                  * Per site 0x2d4: posto f + 0x1000 + 0x2d4, valore 0x2b5. */
-                if (!fits(tgt_off, tgt_size, size))
+                if ( !fits( tgt_off, tgt_size, size ) )
                 {
                     return -4;
                 }
-                uint32_t word = read32(f + tgt_off + (site - tgt_addr));
+                uint32_t word = read32( f + tgt_off + ( site - tgt_addr ) );
 
                 /* (e) slot_base + word non deve superare 0xFFFFFFFF,
                  * altrimenti la somma "gira" e il puntatore diventa un
@@ -317,7 +315,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
                  * 0x2b5 <= 0xFFFFFFFF - 0x20002000: ok.
                  * Dove punta la word non ci interessa: anche fuori dal
                  * programma non è un errore. */
-                if (word > 0xFFFFFFFFu - slot_base)
+                if ( word > 0xFFFFFFFFu - slot_base )
                 {
                     return -4;
                 }
@@ -336,7 +334,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
 
                 /* (a) Le istruzioni Thumb sono allineate a 2: un site
                  * come 0x66 va bene, uno dispari no. */
-                if (site % 2 != 0)
+                if ( site % 2 != 0 )
                 {
                     return -4;
                 }
@@ -344,7 +342,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
                 /* (b) BL e B.W sono istruzioni da 4 byte, e devono stare
                  * nel codice: [0, code_end). code_end viene dal piano;
                  * per thumb_ptr vale 0x310. */
-                if (!fits(site, 4, p->code_end))
+                if ( !fits( site, 4, p->code_end ) )
                 {
                     return -4;
                 }
@@ -358,7 +356,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
                 /* esattamente questa riga, con il tipo in decimale   */
                 /* (test unsupported_reloc, tipo 3).                  */
                 /* -------------------------------------------------- */
-                kprintf("loader: unsupported relocation type %u\n", rtype);
+                kprintf( "loader: unsupported relocation type %u\n", rtype );
                 return -4;
             }
         }
@@ -368,10 +366,7 @@ int elf_check_relocs(const uint8_t *f, uint32_t size, const struct load_plan *p,
     return 0;
 }
 
-
-
-
-void elf_apply_relocs(const uint8_t *f, uint32_t slot_base)
+void elf_apply_relocs( const uint8_t *f, uint32_t slot_base )
 {
     /* Questa funzione viene chiamata da Antonio solo DOPO che:
      * - elf_check_relocs ha restituito 0 sullo stesso f e con lo stesso
@@ -383,15 +378,15 @@ void elf_apply_relocs(const uint8_t *f, uint32_t slot_base)
 
     /* 3.1 Come nel controllo: dove sta la tabella delle sezioni e quante
      * righe ha. Per thumb_ptr: 0x4888 e 25. */
-    uint32_t shoff = read32(f + EH_SHOFF);
-    uint32_t shnum = read16(f + EH_SHNUM);
+    uint32_t shoff = read32( f + EH_SHOFF );
+    uint32_t shnum = read16( f + EH_SHNUM );
 
     /* 3.2 Come nel controllo: tutte le righe, ma solo le REL. */
-    for (uint32_t i = 0; i < shnum; i++)
+    for ( uint32_t i = 0; i < shnum; i++ )
     {
         const uint8_t *row = f + shoff + i * SHDR_SIZE;
 
-        if (read32(row + SH_TYPE) != SHT_REL)
+        if ( read32( row + SH_TYPE ) != SHT_REL )
         {
             continue;
         }
@@ -399,16 +394,16 @@ void elf_apply_relocs(const uint8_t *f, uint32_t slot_base)
         /* Della riga REL servono solo tre campi: dove sono i record,
          * quanti byte occupano, e quale sezione correggono. entsize e
          * link servivano solo ai controlli. */
-        uint32_t rel_off  = read32(row + SH_OFFSET);
-        uint32_t rel_size = read32(row + SH_SIZE);
-        uint32_t info     = read32(row + SH_INFO);
+        uint32_t rel_off = read32( row + SH_OFFSET );
+        uint32_t rel_size = read32( row + SH_SIZE );
+        uint32_t info = read32( row + SH_INFO );
 
         /* 3.4 Stessa regola del controllo, ed è obbligatoria anche qui:
          * le REL del debug hanno site che si riferiscono alle sezioni di
          * debug, non allo slot. Applicarle scriverebbe nello slot in posti
          * sbagliati e rovinerebbe il codice. Quindi si saltano. */
         const uint8_t *target = f + shoff + info * SHDR_SIZE;
-        if ((read32(target + SH_FLAGS) & SHF_ALLOC) == 0)
+        if ( ( read32( target + SH_FLAGS ) & SHF_ALLOC ) == 0 )
         {
             continue;
         }
@@ -416,18 +411,18 @@ void elf_apply_relocs(const uint8_t *f, uint32_t slot_base)
         /* Ogni record della REL: per .rel.text di thumb_ptr 19 record. */
         uint32_t nrel = rel_size / REL_SIZE;
 
-        for (uint32_t r = 0; r < nrel; r++)
+        for ( uint32_t r = 0; r < nrel; r++ )
         {
             const uint8_t *rec = f + rel_off + r * REL_SIZE;
-            uint32_t site  = read32(rec + R_OFFSET);
-            uint32_t rtype = read32(rec + R_INFO) & 0xFF;
+            uint32_t site = read32( rec + R_OFFSET );
+            uint32_t rtype = read32( rec + R_INFO ) & 0xFF;
 
             /* Solo le ABS32 contengono un indirizzo completo, calcolato
              * come se il programma fosse all'indirizzo 0: va spostato di
              * slot_base. I salti Thumb sono relativi e restano come sono.
              * Altri tipi qui non possono arrivare: li ha già rifiutati
              * elf_check_relocs (3.9). */
-            if (rtype == R_ARM_ABS32)
+            if ( rtype == R_ARM_ABS32 )
             {
                 /* Dove sta la word in RAM: il programma è linkato a 0, quindi
                  * il site è già l'offset dentro lo slot.
@@ -439,7 +434,7 @@ void elf_apply_relocs(const uint8_t *f, uint32_t slot_base)
                  * multiplo di 4 (3.7) e slot_base è multiplo di 4096, quindi
                  * l'indirizzo è allineato. Si scrive nello SLOT, in RAM, non
                  * nel file f, che è in FLASH e in sola lettura. */
-                uint32_t *word = (uint32_t *) (uintptr_t) (slot_base + site);
+                uint32_t *word = (uint32_t *) (uintptr_t) ( slot_base + site );
 
                 /* Legge la word copiata da Antonio, le somma slot_base e la
                  * riscrive nello stesso posto: 0x000002b5 -> 0x200022b5.
@@ -450,4 +445,3 @@ void elf_apply_relocs(const uint8_t *f, uint32_t slot_base)
         }
     }
 }
-

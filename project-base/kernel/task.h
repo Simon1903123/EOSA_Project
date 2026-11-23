@@ -128,6 +128,6 @@ int task_current_is_program( void );
  * it the current one (tcb_current, states, MPU region 1). */
 void task_switch_context( void );
 
-void task_program_set_code_size(unsigned slot, uint32_t code_size);
+void task_program_set_code_size( unsigned slot, uint32_t code_size );
 
 #endif /* TASK_H */

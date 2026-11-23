@@ -31,7 +31,8 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
         return -4;
     }
 
-    for ( i = 0; i < v->shnum; i++ ) {
+    for ( i = 0; i < v->shnum; i++ )
+    {
         struct elf_shdr sh;
         elf_get_shdr( v->f, v->shoff, i, &sh );
 
@@ -42,10 +43,9 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
         }
 
         /* tutte le sezioni REL: i record devono stare nel file */
-        if ( sh.type == SHT_REL ) {
-            if ( sh.entsize != ELF_REL_SIZE ||
-                 ( sh.size % ELF_REL_SIZE ) != 0 ||
-                 !elf_fits( sh.offset, sh.size, v->size ) )
+        if ( sh.type == SHT_REL )
+        {
+            if ( sh.entsize != ELF_REL_SIZE || ( sh.size % ELF_REL_SIZE ) != 0 || !elf_fits( sh.offset, sh.size, v->size ) )
                 return -4;
         }
 
@@ -62,7 +62,7 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
         }
 
         /* nel file: solo se ha byte (non NOBITS), dentro la parte caricata */
-        if ( sh.type != SHT_NOBITS ) 
+        if ( sh.type != SHT_NOBITS )
         {
             if ( sh.offset < v->file_off || !elf_fits( sh.offset - v->file_off, sh.size, v->file_size ) )
             {
@@ -74,12 +74,11 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
         if ( sh.flags & SHF_WRITE )
         {
             seen_write = 1;
-          
-            if(sh.addr<first_writable_addr) 
-            {
-               first_writable_addr = sh.addr;
-            }
 
+            if ( sh.addr < first_writable_addr )
+            {
+                first_writable_addr = sh.addr;
+            }
         }
         else if ( seen_write )
         {
@@ -87,21 +86,21 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
         }
 
         /* codice: aggiorna code_end e controlla l'entry */
-        if ( sh.flags & SHF_EXECINSTR ) {
+        if ( sh.flags & SHF_EXECINSTR )
+        {
             if ( sh.addr + sh.size > code_end )   /* sicuro: <= load_end */
             {
                 code_end = sh.addr + sh.size;
             }
-          
+
             if ( entry >= sh.addr && entry - sh.addr < sh.size )
             {
                 entry_ok = 1;
             }
-          
         }
     }
 
-    if ( !entry_ok ) 
+    if ( !entry_ok )
     {
         return -4;
     }
