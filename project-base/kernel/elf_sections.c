@@ -68,6 +68,14 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
             {
                 return -4;
             }
+
+            /* the bytes of the section are copied to sh_addr: the file
+             * position must match, or the relocation checks would read
+             * different bytes from the ones that end up in the slot */
+            if ( sh.offset - v->file_off != sh.addr )
+            {
+                return -4;
+            }
         }
 
         /* read-only prima delle scrivibili (serve a W^X) */

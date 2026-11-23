@@ -15,6 +15,14 @@ int elf_check_relocs( const uint8_t *f, uint32_t size, const struct load_plan *p
     uint32_t shoff = elf_read32( f + EH_SHOFF );
     uint32_t shnum = elf_read16( f + EH_SHNUM );
 
+    /* One bit per 4-byte word of the program (3072 / 4 = 768 words):
+     * an ABS32 site seen twice would get the slot base added twice. */
+    uint32_t abs_seen[3072u / 4u / 32u];
+    for ( uint32_t k = 0; k < 3072u / 4u / 32u; k++ )
+    {
+        abs_seen[k] = 0;
+    }
+
     /* ============================================================== */
     /* 3.2 Scorriamo TUTTE le righe della tabella.                    */
     /* ============================================================== */
@@ -254,6 +262,15 @@ int elf_check_relocs( const uint8_t *f, uint32_t size, const struct load_plan *p
                 {
                     return -4;
                 }
+
+                /* site < bss_start <= 3072 here, so site / 4 < 768 */
+                uint32_t w = site / 4u;
+                if ( abs_seen[w / 32u] & ( 1u << ( w % 32u ) ) )
+                {
+                    return -4;
+                }
+                abs_seen[w / 32u] |= 1u << ( w % 32u );
+
                 break;
             }
 
@@ -277,7 +294,7 @@ int elf_check_relocs( const uint8_t *f, uint32_t size, const struct load_plan *p
                 /* (b) BL e B.W sono istruzioni da 4 byte, e devono stare
                  * nel codice: [0, code_end). code_end viene dal piano;
                  * per thumb_ptr vale 0x310. */
-                if ( !elf_fits( site, 4, p->code_end ) )
+                if ( site < tgt_addr || !elf_fits( site - tgt_addr, 4, tgt_size ) || !elf_fits( site, 4, p->code_end ) )
                 {
                     return -4;
                 }
