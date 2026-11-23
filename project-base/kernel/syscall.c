@@ -280,12 +280,12 @@ static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     (void) a0;
     (void) a1;
     (void) a2;
-    
+
     if ( !image_valid() )
     {
-    	return (uint32_t) -1;
+        return (uint32_t) -1;
     }
-        
+
     return image_header_count();
 }
 
