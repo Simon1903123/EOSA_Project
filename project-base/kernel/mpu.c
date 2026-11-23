@@ -30,6 +30,11 @@ void mpu_init( void )
     __asm volatile ( "isb" ::: "memory" );  /* ... before the next instruction */
 }
 
+static void mpu_disable_region(uint32_t region){
+    MPU->RNR = region;
+    MPU->RASR = 0u;
+}
+
 void mpu_set_task_region( uint32_t base, uint32_t size, int executable )
 {
     /* The SIZE field holds log2(size) - 1. __builtin_ctz counts the
@@ -44,6 +49,51 @@ void mpu_set_task_region( uint32_t base, uint32_t size, int executable )
               | MPU_RASR_AP( MPU_AP_FULL_RW )
               | MPU_RASR_S | MPU_RASR_C
               | MPU_RASR_SIZE( log2_size ) | MPU_RASR_ENABLE; /* 4 KB: 0x13060017 */
+    
+    mpu_disable_region(2);
     __asm volatile ( "dsb" ::: "memory" );
     __asm volatile ( "isb" ::: "memory" );
 }
+
+void mpu_set_program_regions(uint32_t slot_base, uint32_t slot_size, uint32_t code_size){
+
+
+    uint32_t log2_size = __builtin_ctz(slot_size);
+
+    /* Regione 1: intero slot da 4 KiB -> Read/Write, Non Eseguibile (XN=1) */
+    MPU -> RBAR = slot_base | MPU_RBAR_VALID | 1;
+    MPU -> RASR = MPU_RASR_XN
+              | MPU_RASR_AP( MPU_AP_FULL_RW )
+              | MPU_RASR_S | MPU_RASR_C
+              | MPU_RASR_SIZE( log2_size ) | MPU_RASR_ENABLE;
+
+    uint32_t sub_size = slot_size / 8; /* 8 sub-regioni: 4096 / 8 = 512 byte */
+    if ( code_size == 0 || code_size >= slot_size )
+    {
+        mpu_disable_region( 2u );
+        __asm volatile ( "dsb" ::: "memory" );
+        __asm volatile ( "isb" ::: "memory" );
+        return;
+    }
+    
+    uint32_t n = (code_size + sub_size -1u) / sub_size; //quante "fette" di codice servono
+    
+    if(n == 0 || n > 7){
+        mpu_disable_region(2);
+        __asm volatile ( "dsb" ::: "memory" );
+        __asm volatile ( "isb" ::: "memory" );
+        return;
+    }
+
+    uint32_t srd_mask = ~((1u << n) - 1u) & 0xFFu; //serve per disabilitare le fette non necessarie, 1 = disabilitata, 0 = abilitata
+
+    /* Regione 2: stesso slot -> Read-Only, Eseguibile (XN=0), attiva solo sulle prime n fette */
+    MPU -> RBAR = slot_base | MPU_RBAR_VALID | 2;
+    MPU -> RASR = MPU_RASR_AP(MPU_AP_RO) | MPU_RASR_S
+                | MPU_RASR_C | srd_mask << 8
+                | MPU_RASR_SIZE(log2_size) | MPU_RASR_ENABLE;
+
+    __asm volatile ( "dsb" ::: "memory" );
+    __asm volatile ( "isb" ::: "memory" );
+}
+
