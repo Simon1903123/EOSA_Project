@@ -89,9 +89,8 @@ void mpu_set_program_regions( uint32_t slot_base, uint32_t slot_size, uint32_t c
 
     uint32_t srd_mask = ~( ( 1u << n ) - 1u ) & 0xFFu; //serve per disabilitare le fette non necessarie, 1 = disabilitata, 0 = abilitata
 
-    /* Regione 2: stesso slot -> Read-Only, Eseguibile (XN=0), attiva solo sulle prime n fette */
     MPU->RBAR = slot_base | MPU_RBAR_VALID | 2;
-    MPU->RASR = MPU_RASR_AP( MPU_AP_RO ) | MPU_RASR_S
+    MPU->RASR = MPU_RASR_AP( MPU_AP_PRIV_RW_USER_RO ) | MPU_RASR_S
                 | MPU_RASR_C | srd_mask << 8
                 | MPU_RASR_SIZE( log2_size ) | MPU_RASR_ENABLE;
 
