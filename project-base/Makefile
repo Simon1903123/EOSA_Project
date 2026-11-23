@@ -81,8 +81,8 @@ QEMU += -device loader,file=$(IMAGE),addr=$(IMAGE_ADDR),force-raw=on
 # These targets are command names, not files on disk.
 .PHONY: all clean image run debug run-trace test test-small test-big test-list programs format format-check
 
-# Default goal: build the image.
-all: $(BIN)
+# Default goal: build the kernel, every program and the real fs.img.
+all: image
 
 # Compile one .c file to a .o file, creating its build folder first.
 $(BUILD_DIR)/%.o: %.c
@@ -197,9 +197,6 @@ PROG_ELF:= $(foreach m,$(PROG_MAP),$(PROG_OUT)/$(word 1,$(subst :, ,$(m))).elf)
 
 # Programs: build every program in programs/ into a .elf file in build/programs/
 programs: $(PROG_ELF)
-
-# Default goal: build the kernel, every program and the real fs.img.
-all: image
 
 # PROG_RULE is a template for one program: it builds build/programs/NAME.elf
 # from programs/SOURCE, the runtime files and prog.ld. $$@ is the target,
