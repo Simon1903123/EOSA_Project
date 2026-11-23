@@ -29,77 +29,11 @@
 #include "kernel/elf_internal.h"
 
 /*
- * Code + data + BSS of a program must fit in the lower 3072 bytes of its
- * 4096-byte slot; the upper 1024 bytes are the stack, which starts at the
- * end of the slot and grows down (assignment 6.4).
+ * The helpers elf_read16(), elf_read32() and elf_fits(), every ELF constant
+ * and the slot limit LOADER_PROGRAM_MAX (3072 bytes: code + data + BSS,
+ * assignment 6.4) are defined once in kernel/elf_internal.h and
+ * kernel/loader.h, and shared with elf_sections.c and reloc.c.
  */
-#define SLOT_PROG_MAX 3072u
-
-/* ======================================================================
- * STEP 1 - The three common helpers.
- * They are also used by Athena (elf_sections.c) and Simone (relocations),
- * so their names and signatures are fixed by elf_internal.h.
- * ====================================================================== */
-
-/*
- * elf_read16 - read a 16-bit number stored at p in the file.
- *
- * The file is little-endian: the LOW byte comes first, the HIGH byte second.
- *   p[0] = 0x34, p[1] = 0x00  ->  0x0034 = 52   (e_phoff, in every program)
- *   p[0] = 0x18, p[1] = 0x00  ->  0x0018 = 24   (e_shnum of global_state)
- * The caller must already know that p[0] and p[1] are inside the file.
- */
-uint32_t elf_read16( const uint8_t *p )
-{
-    /* Each byte is widened to uint32_t before the shift; p[1] is moved
-     * 8 bits up (times 256) and the two halves are joined with | (they
-     * share no bits, so | works like a sum). */
-    return (uint32_t) p[0] | ( (uint32_t) p[1] << 8 );
-}
-
-/*
- * elf_read32 - read a 32-bit number stored at p in the file.
- *
- * Same idea with 4 bytes: p[0] is the lowest byte, p[3] the highest.
- *   3c 36 01 00  ->  0x0001363c   (e_shoff of global_state)
- * Reading byte by byte, instead of *(uint32_t *) p, avoids an unaligned
- * access fault: p comes from the file and may be any address.
- */
-uint32_t elf_read32( const uint8_t *p )
-{
-    /* Without the (uint32_t) cast, p[3] << 24 would be computed on a
-     * signed int and overflow when p[3] >= 0x80. */
-    return (uint32_t) p[0] | ( (uint32_t) p[1] << 8 ) | ( (uint32_t) p[2] << 16 )
-           | ( (uint32_t) p[3] << 24 );
-}
-
-/*
- * elf_fits - is the range [off, off + len) completely inside [0, size)?
- *
- *   off   where the range starts, counted from the beginning of the
- *         container (a file offset, or a slot offset).
- *         Example: e_shoff = 0x1363c, the start of the section table.
- *   len   how many bytes the range is long.
- *         Example: e_shnum * 40 = 24 * 40 = 960, the whole section table.
- *   size  how big the container is: the file length (size of the ELF)
- *         or SLOT_PROG_MAX (3072) for the program part of a slot.
- *
- * Returns 1 if the range fits, 0 otherwise. All three values may come
- * from a damaged file, so off + len is never computed: with
- * off = 0xFFFFFFF0 and len = 0x20 the sum would wrap around to 0x10 and
- * look "inside".
- *
- * Examples: elf_fits( 0, 3072, 3072 )          = 1   (ends exactly at the end)
- *           elf_fits( 0, 3073, 3072 )          = 0   (too_large: one byte too many)
- *           elf_fits( 0xFFFFFFF0, 0x20, 3072 ) = 0   (overflow avoided)
- */
-int elf_fits( uint32_t off, uint32_t len, uint32_t size )
-{
-    /* First the start must be inside, then the length must fit in what is
-     * left after the start. size - off cannot go below zero here, because
-     * the first test already passed (&& stops at the first false). */
-    return off <= size && len <= size - off;
-}
 
 /* ======================================================================
  * STEPS 2-4 - check_header(): pipeline step 2.1.
@@ -190,7 +124,7 @@ static int check_header( const uint8_t *f, uint32_t size, struct elf_view *v )
      *
      * Why they are checked: our code always uses the fixed lengths 32 and 40
      * (i * ELF_PHDR_SIZE, i * ELF_SHDR_SIZE) and reads fields at fixed places
-     * inside a row (p_filesz at ph + 16). If a file said "my rows are 56
+     * inside a row (p_filesz at ph + PH_FILESZ). If a file said "my rows are 56
      * bytes long", row 1 would really be at +56, we would look at +32 and
      * read pieces of different rows mixed together. So we refuse the file
      * instead. Assignment 6.3: "52-byte file header, 32-byte program
@@ -296,7 +230,7 @@ static int check_segments( struct elf_view *v )
      */
     uint32_t delta = 0;
     int have_delta = 0;
-    uint32_t min_addr = SLOT_PROG_MAX;
+    uint32_t min_addr = LOADER_PROGRAM_MAX;
     uint32_t file_end = 0;
     uint32_t load_end = 0;
 
@@ -316,11 +250,11 @@ static int check_segments( struct elf_view *v )
          * (+24: W^X comes from code_end, not from here), p_align (+28).
          * global_state: type 1, offset 0x10000, vaddr 0, filesz = memsz = 0x314.
          */
-        uint32_t type = elf_read32( ph + 0 );    /* p_type: kind of segment         */
-        uint32_t offset = elf_read32( ph + 4 );  /* p_offset: where in the FILE     */
-        uint32_t vaddr = elf_read32( ph + 8 );   /* p_vaddr: where in the SLOT      */
-        uint32_t filesz = elf_read32( ph + 16 ); /* p_filesz: bytes from the file   */
-        uint32_t memsz = elf_read32( ph + 20 );  /* p_memsz: bytes in memory (+BSS) */
+        uint32_t type = elf_read32( ph + PH_TYPE );    /* p_type: kind of segment         */
+        uint32_t offset = elf_read32( ph + PH_OFFSET );  /* p_offset: where in the FILE     */
+        uint32_t vaddr = elf_read32( ph + PH_VADDR );   /* p_vaddr: where in the SLOT      */
+        uint32_t filesz = elf_read32( ph + PH_FILESZ ); /* p_filesz: bytes from the file   */
+        uint32_t memsz = elf_read32( ph + PH_MEMSZ );  /* p_memsz: bytes in memory (+BSS) */
 
         /*
          * STEP 5b - The type of the segment.
@@ -350,7 +284,7 @@ static int check_segments( struct elf_view *v )
          * overflow 32 bits with a damaged vaddr.
          */
         if ( filesz > memsz                              /* more bytes than room  */
-             || !elf_fits( vaddr, memsz, SLOT_PROG_MAX ) /* past 3072: too_large  */
+             || !elf_fits( vaddr, memsz, LOADER_PROGRAM_MAX ) /* past 3072: too_large  */
              || !elf_fits( offset, filesz, v->size ) )   /* bytes outside file    */
             return -4;
 
@@ -425,11 +359,11 @@ static int check_segments( struct elf_view *v )
     for ( i = 0; i < v->phnum; i++ )
     {
         const uint8_t *ph = v->f + v->phoff + i * ELF_PHDR_SIZE;
-        uint32_t vaddr = elf_read32( ph + 8 );
-        uint32_t filesz = elf_read32( ph + 16 );
-        uint32_t memsz = elf_read32( ph + 20 );
+        uint32_t vaddr = elf_read32( ph + PH_VADDR );
+        uint32_t filesz = elf_read32( ph + PH_FILESZ );
+        uint32_t memsz = elf_read32( ph + PH_MEMSZ );
 
-        if ( elf_read32( ph + 0 ) == PT_LOAD && memsz > filesz && vaddr + filesz < file_end )
+        if ( elf_read32( ph + PH_TYPE ) == PT_LOAD && memsz > filesz && vaddr + filesz < file_end )
             return -4;
     }
 
