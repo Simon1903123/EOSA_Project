@@ -63,6 +63,7 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
         /* read-only prima delle scrivibili (serve a W^X) */
         if ( sh.flags & SHF_WRITE )
             seen_write = 1;
+            if(sh.addr<first_writable_addr) first_writable_addr = sh.addr;
         else if ( seen_write )
             return -4;
 
