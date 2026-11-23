@@ -36,70 +36,9 @@
 #define SLOT_PROG_MAX 3072u
 
 /* ======================================================================
- * STEP 1 - The three common helpers.
- * They are also used by Athena (elf_sections.c) and Simone (relocations),
- * so their names and signatures are fixed by elf_internal.h.
+ * STEP 1 - The three common helpers (elf_read16, elf_read32, elf_fits) are
+ * defined in kernel/elf_internal.h, shared with elf_sections.c and reloc.c.
  * ====================================================================== */
-
-/*
- * elf_read16 - read a 16-bit number stored at p in the file.
- *
- * The file is little-endian: the LOW byte comes first, the HIGH byte second.
- *   p[0] = 0x34, p[1] = 0x00  ->  0x0034 = 52   (e_phoff, in every program)
- *   p[0] = 0x18, p[1] = 0x00  ->  0x0018 = 24   (e_shnum of global_state)
- * The caller must already know that p[0] and p[1] are inside the file.
- */
-uint32_t elf_read16( const uint8_t *p )
-{
-    /* Each byte is widened to uint32_t before the shift; p[1] is moved
-     * 8 bits up (times 256) and the two halves are joined with | (they
-     * share no bits, so | works like a sum). */
-    return (uint32_t) p[0] | ( (uint32_t) p[1] << 8 );
-}
-
-/*
- * elf_read32 - read a 32-bit number stored at p in the file.
- *
- * Same idea with 4 bytes: p[0] is the lowest byte, p[3] the highest.
- *   3c 36 01 00  ->  0x0001363c   (e_shoff of global_state)
- * Reading byte by byte, instead of *(uint32_t *) p, avoids an unaligned
- * access fault: p comes from the file and may be any address.
- */
-uint32_t elf_read32( const uint8_t *p )
-{
-    /* Without the (uint32_t) cast, p[3] << 24 would be computed on a
-     * signed int and overflow when p[3] >= 0x80. */
-    return (uint32_t) p[0] | ( (uint32_t) p[1] << 8 ) | ( (uint32_t) p[2] << 16 )
-           | ( (uint32_t) p[3] << 24 );
-}
-
-/*
- * elf_fits - is the range [off, off + len) completely inside [0, size)?
- *
- *   off   where the range starts, counted from the beginning of the
- *         container (a file offset, or a slot offset).
- *         Example: e_shoff = 0x1363c, the start of the section table.
- *   len   how many bytes the range is long.
- *         Example: e_shnum * 40 = 24 * 40 = 960, the whole section table.
- *   size  how big the container is: the file length (size of the ELF)
- *         or SLOT_PROG_MAX (3072) for the program part of a slot.
- *
- * Returns 1 if the range fits, 0 otherwise. All three values may come
- * from a damaged file, so off + len is never computed: with
- * off = 0xFFFFFFF0 and len = 0x20 the sum would wrap around to 0x10 and
- * look "inside".
- *
- * Examples: elf_fits( 0, 3072, 3072 )          = 1   (ends exactly at the end)
- *           elf_fits( 0, 3073, 3072 )          = 0   (too_large: one byte too many)
- *           elf_fits( 0xFFFFFFF0, 0x20, 3072 ) = 0   (overflow avoided)
- */
-int elf_fits( uint32_t off, uint32_t len, uint32_t size )
-{
-    /* First the start must be inside, then the length must fit in what is
-     * left after the start. size - off cannot go below zero here, because
-     * the first test already passed (&& stops at the first false). */
-    return off <= size && len <= size - off;
-}
 
 /* ======================================================================
  * STEPS 2-4 - check_header(): pipeline step 2.1.
