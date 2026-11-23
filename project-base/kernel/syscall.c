@@ -310,7 +310,7 @@ static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     char *dest_buffer = (char *) a1;
 
     /* 5. Copia dei caratteri */
-    for ( uint32_t i = 0; i < a2 - 1; i++ )
+    for ( uint32_t i = 0; i < a2; i++ )
     {
         dest_buffer[i] = flash_name[i];
 
