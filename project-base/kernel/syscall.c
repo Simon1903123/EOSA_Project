@@ -34,26 +34,7 @@
 #include "kernel/trace.h"
 #include "kernel/loader.h"
 
-/* FLASH: 0x00000000..0x003fffff, readable by every task (assignment 6.4). */
-#define FLASH_LIMIT 0x00400000u
-
-/* IMG1 image (assignment 6.1). Every number of the format is defined here
- * once: the checks below use these names, never the bare numbers. */
-#define IMG_MAGIC 0x31474d49u     /* bytes 49 4d 47 31 = "IMG1" */
-#define IMG_VERSION 1u
-#define IMG_HEADER_SIZE 20u       /* struct img_header */
-#define IMG_ENTRY_SIZE 24u        /* struct img_dirent */
-#define IMG_NAME_SIZE 16u         /* up to 15 characters + NUL */
-#define IMG_MAX_COUNT 32u
-#define IMG_MAX_SIZE 0x00200000u  /* 2 MiB: 0x00200000..0x003fffff */
-#define IMG_MIN_FILE_SIZE 40u
-
-#define LOADER_EXECUTABLE 1 /* flag executable per la MPU (W^X via code_size) */
-
-/* Linker symbols (scripts/mps2_m3.ld): where QEMU puts fs.img, and the
- * first of the four program slots (0x20002000). */
 extern uint32_t __fs_image_start;
-extern uint32_t __program_slots_start[];
 
 struct img_header {
     uint32_t magic;
@@ -64,7 +45,7 @@ struct img_header {
 };
 
 struct img_dirent {
-    char name[IMG_NAME_SIZE];
+    char name[16];
     uint32_t offset;
     uint32_t size;
 };
@@ -80,16 +61,6 @@ typedef uint32_t ( *syscall_fn )( uint32_t a0, uint32_t a1, uint32_t a2 );
 static int in_range( uint32_t p, uint32_t len, uint32_t start, uint32_t end )
 {
     return p >= start && p <= end && len <= end - p;
-}
-
-/* May the calling task make the kernel READ [p, p + len)? Only inside its
- * own partition or inside FLASH (string constants). Used by SVC 1 and 13. */
-static int caller_can_read( uint32_t p, uint32_t len )
-{
-    const struct tcb *t = tcb_current;
-
-    return ( t != 0 && in_range( p, len, t->part_start, t->part_end ) )
-           || in_range( p, len, 0x00000000u, FLASH_LIMIT );
 }
 
 /* SYS_WRITE: a0 = buf, a1 = len. Put as many bytes as fit into the
@@ -109,7 +80,10 @@ static uint32_t sys_write_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     /* A task must not make the kernel read memory the task itself may
      * not read. Accept the buffer only inside its own partition or
      * inside FLASH (string constants). The kernel itself is trusted. */
-    if ( tcb_current != 0 && !caller_can_read( a0, len ) )
+    const struct tcb *t = tcb_current;
+    if ( t != 0
+         && !in_range( a0, len, t->part_start, t->part_end )
+         && !in_range( a0, len, 0x00000000, 0x00400000 ) )
         return (uint32_t) -1;
 
     return uart_write( buf, len );              /* bytes accepted, 0..len */
@@ -234,6 +208,8 @@ static uint32_t sys_trace_dump_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return 0;
 }
 
+static int image_valid( void );
+
 /* Wait bookkeeping is supplied even though the untouched base has no loader.
  * Student loader code supplies SYS_PROGRAM_RUN and creates program tasks. */
 static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
@@ -245,60 +221,170 @@ static uint32_t sys_program_wait_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
     return (uint32_t) task_wait_program( a0, &frame[0] );
 }
 
-/* ======================================================================
- * The IMG1 image in FLASH (assignment 6.1). It is read where it is and
- * never written or copied.
- * ====================================================================== */
-
-static const struct img_header *img_header( void )
-{
-    return (const struct img_header *) &__fs_image_start;
-}
-
-/* Directory entry i. Call it only after image_header_count() succeeded,
- * so that the directory is inside the image, and with i < count. */
-static const struct img_dirent *img_entry( uint32_t i )
-{
-    const struct img_header *h = img_header();
-
-    return (const struct img_dirent *) ( (uint32_t) h + h->directory_offset
-                                         + i * IMG_ENTRY_SIZE );
-}
-
-/* Check the 20-byte header only. Return count (1..32) or -1. */
 static uint32_t image_header_count( void )
 {
-    const struct img_header *h = img_header();
+    struct img_header *img = (struct img_header *) &__fs_image_start;
 
-    if ( h->magic != IMG_MAGIC || h->version != IMG_VERSION )
+    /* 1. Controllo Magic Number (deve essere "IMG1") */
+    if ( img->magic != 0x31474d49 )
+    {
         return (uint32_t) -1;
-    if ( h->count < 1 || h->count > IMG_MAX_COUNT )
-        return (uint32_t) -1;
-    if ( h->image_size < IMG_HEADER_SIZE || h->image_size > IMG_MAX_SIZE )
-        return (uint32_t) -1;
-    if ( h->directory_offset < IMG_HEADER_SIZE || ( h->directory_offset % 4 ) != 0 )
-        return (uint32_t) -1;
+    }
 
-    /* directory_offset + count * 24 must not overflow (count <= 32, so
-     * count * 24 cannot) and must not pass image_size. Written as a
-     * subtraction, so the sum is never computed. */
-    if ( h->directory_offset > h->image_size
-         || h->count * IMG_ENTRY_SIZE > h->image_size - h->directory_offset )
+    /* 2. Controllo Versione (deve essere 1) */
+    if ( img->version != 1 )
+    {
         return (uint32_t) -1;
+    }
 
-    return h->count;
+    /* 3. Controllo Count (tra 1 e 32 programmi) */
+    if ( img->count < 1 || img->count > 32 )
+    {
+        return (uint32_t) -1;
+    }
+
+    /* Controllo Dimensione Immagine: 
+     * Minimo 20 byte (la grandezza dell'header stesso),
+     * Massimo 0x00200000 (i 2 MiB fisici disponibili in Flash). */
+    if ( img->image_size < 20 || img->image_size > 0x00200000 )
+    {
+        return (uint32_t) -1;
+    }
+
+    /* Controllo Offset della Directory:
+     * Minimo 20 (deve partire dopo l'header),
+     * Multiplo di 4 (il resto della divisione per 4 deve essere 0 per l'allineamento). */
+    if ( img->directory_offset < 20 || ( img->directory_offset % 4 ) != 0 )
+    {
+        return (uint32_t) -1;
+    }
+
+    /* Controllo Limiti e Prevenzione Overflow:
+     * Calcoliamo dove finisce la directory (inizio + numero di file * 24 byte). */
+    uint32_t directory_end = img->directory_offset + ( img->count * 24 );
+
+    /* Usiamo l'OR logico (||) invece del bitwise OR (|).
+     * 1° check: Se directory_end è minore della partenza, c'è stato un integer overflow.
+     * 2° check: Se la fine sfora la dimensione totale dell'immagine dichiarata, è un errore. */
+    if ( directory_end < img->directory_offset || directory_end > img->image_size )
+    {
+        return (uint32_t) -1;
+    }
+
+    /* Se arriviamo qui, l'immagine è immacolata. Restituiamo il numero di file. */
+    return img->count;
+}
+
+static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+{
+    (void) a0;
+    (void) a1;
+    (void) a2;
+    
+    if ( !image_valid() )
+    {
+    	return (uint32_t) -1;
+    }
+        
+    return image_header_count();
+}
+
+static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
+{
+    //a0 indice
+    //a1 puntatore al buffer
+    //a2 dimensione del buffer
+
+    /* 1. Controllo validità immagine e indice */
+    uint32_t count = sys_image_count_impl( 0, 0, 0 );
+    if ( count == (uint32_t) -1 || a0 >= count )
+    {
+        return (uint32_t) -1;
+    }
+
+    /* 2. Controllo capacità del buffer richiesta dalle specifiche */
+    if ( a2 < 1 || a2 > 16 )
+    {
+        return (uint32_t) -1;
+    }
+
+    /* 3. Pointer Guard: Sicurezza della memoria utente */
+    const struct tcb *t = tcb_current;
+    if ( t != 0 && !in_range( a1, a2, t->part_start, t->part_end ) )
+    {
+        return (uint32_t) -1;
+    }
+
+    /* 4. Calcolo dell'indirizzo fisico in Flash */
+    struct img_header *img = (struct img_header *) &__fs_image_start;
+
+    char *flash_name = (char *) ( (uint32_t) img + img->directory_offset + ( a0 * 24 ) );
+    char *dest_buffer = (char *) a1;
+
+    /* 5. Copia dei caratteri */
+    for ( uint32_t i = 0; i < a2; i++ )
+    {
+        dest_buffer[i] = flash_name[i];
+
+        if ( flash_name[i] == '\0' )
+        {
+            return 0; /* Successo: fine della stringa raggiunta */
+        }
+    }
+
+    /* 6. Troncamento se il buffer è troppo piccolo */
+    dest_buffer[a2 - 1] = '\0';
+    return (uint32_t) -1;
+}
+
+#define SLOT_SIZE 4096u /*ogni slot: 4KB */
+#define PROGRAM_MAX 3072u /*programma: massimo 3Kb, il resto è stack */
+#define FLASH_LIMIT 0x00400000u /*la flash va da 0 a questo indirizzo */
+#define LOADER_EXECUTABLE 1 /*flag executable per la MPU */
+
+/*inizio dei 4 slot di ram (0x20002000), il simbolo lo esporta il linker script */
+extern uint32_t __program_slots_start[];
+
+/*controlla se il chiamante (kernel) può leggere i byte nella partizione [p, p + len ) */
+static int caller_can_read( uint32_t p, uint32_t len )
+{
+    const struct tcb *t = tcb_current;
+
+    return ( t != 0 && in_range( p, len, t->part_start, t->part_end ) ) || in_range( p, len, 0x00000000u, FLASH_LIMIT );
+}
+
+/*copia nel nel buffer dst del kernel il nome del programma all'indirizzo a0*/
+static int copy_name( uint32_t a0, char dst[16] )
+{
+    const char *src = (const char *) a0;
+
+    for ( uint32_t i = 0; i < 16; i++ )
+    {
+        if ( !caller_can_read( a0, i + 1 ) )
+            return -1;
+        dst[i] = src[i];
+        if ( dst[i] == '\0' )  /*controlla se un carattere è NULL*/
+            return i == 0 ? -1 : 0; /*se il primo carattere è NULL, restituisci -1, altrimenti 0*/
+    }
+    return -1;  /*ritorna -1 se non c'è nessun valore NULL nei primi 16 byte*/
+}
+
+static const struct img_dirent *img_entry( uint32_t i )
+{
+    const struct img_header *h = (const struct img_header *) &__fs_image_start;
+
+    return (const struct img_dirent *) ( (uint32_t) h + h->directory_offset + i * 24u );
 }
 
 static int name_char_ok( char c )
 {
-    return ( c >= 'A' && c <= 'Z' ) || ( c >= 'a' && c <= 'z' ) || ( c >= '0' && c <= '9' )
-           || c == '_' || c == '-';
+    return ( c >= 'A' && c <= 'Z' ) || ( c >= 'a' && c <= 'z' ) || ( c >= '0' && c <= '9' ) || c == '_' || c == '-';
 }
 
-/* Compare two names, at most IMG_NAME_SIZE bytes, up to the first NUL. */
+/*confronta i nomi inseriti un carattere alla volta*/
 static int same_name( const char *a, const char *b )
 {
-    for ( uint32_t k = 0; k < IMG_NAME_SIZE; k++ )
+    for ( int k = 0; k < 16; k++ )
     {
         if ( a[k] != b[k] )
             return 0;
@@ -308,44 +394,41 @@ static int same_name( const char *a, const char *b )
     return 1;
 }
 
-/* The whole image: header and every directory entry. 1 = valid, 0 = not.
- * If any rule is broken the whole image is invalid (6.1). */
 static int image_valid( void )
 {
+ /*l'intestazione dell'immagine viene già controllata da svc 11*/
     uint32_t count = image_header_count();
     if ( count == (uint32_t) -1 )
         return 0;
 
-    const struct img_header *h = img_header();
-    uint32_t dir_end = h->directory_offset + count * IMG_ENTRY_SIZE; /* checked above */
-    uint32_t contents_start = ( dir_end + 3u ) & ~3u;                /* rounded up to 4 */
-
+    const struct img_header *h = (const struct img_header *) &__fs_image_start;
+    uint32_t dir_end = h->directory_offset + count * 24u; /*non c'è overflow, già controllato in svc 11*/
+    uint32_t contents_start = ( dir_end + 3u ) & ~3u; /*fine directory, arrotondata a multiplo di 4*/
     for ( uint32_t i = 0; i < count; i++ )
     {
         const struct img_dirent *e = img_entry( i );
-
-        /* Name: 1..15 allowed characters, then NUL. */
+  /*controllo del nome*/
         uint32_t n = 0;
-        while ( n < IMG_NAME_SIZE && e->name[n] != '\0' )
+        while ( n < 16 && e->name[n] != '\0' )
         {
             if ( !name_char_ok( e->name[n] ) )
                 return 0;
             n++;
         }
-        if ( n == 0 || n == IMG_NAME_SIZE )
+        if ( n == 0 || n == 16 )
             return 0;
 
-        /* File: aligned, at least 40 bytes, after the directory, inside
-         * the image (without computing offset + size). */
-        if ( ( e->offset & 3u ) != 0 || e->size < IMG_MIN_FILE_SIZE )
-            return 0;
-        if ( e->offset < contents_start || e->offset > h->image_size
-             || e->size > h->image_size - e->offset )
+  /*offset multiplo di 4, dimensione almeno 40 */
+        if ( ( e->offset & 3u ) != 0 || e->size < 40u )
             return 0;
 
-        /* No duplicate name and no overlap with an earlier entry. The sums
-         * cannot overflow: both files are already known to be inside the
-         * image, which is at most 2 MiB. */
+  /*il file sta dopo la directory e dentro l'immagine (senza overflow)*/
+        if ( e->offset < contents_start )
+            return 0;
+        if ( e->offset > h->image_size || e->size > h->image_size - e->offset )
+            return 0;
+
+  /*confronto della voce e con ogni voce precedente, se c'è sovrapposizione ritorna 0 */
         for ( uint32_t j = 0; j < i; j++ )
         {
             const struct img_dirent *o = img_entry( j );
@@ -359,85 +442,20 @@ static int image_valid( void )
     return 1;
 }
 
-/* The entry called name, or 0. Call it only on a valid image. */
+/*cerca nella directory la voce il cui nome è uguale a name. se non c'è restituisci -2 altrimenti tieni il puntatore della voce (found) e da lì ricaviamo offset e size del file ELF*/
+/**/
 static const struct img_dirent *find_entry( const char *name )
 {
-    uint32_t count = img_header()->count;
+    const struct img_header *h = (const struct img_header *) &__fs_image_start;
 
-    for ( uint32_t i = 0; i < count; i++ )
+    for ( uint32_t i = 0; i < h->count; i++ )
         if ( same_name( name, img_entry( i )->name ) )
             return img_entry( i );
     return 0;
 }
 
-/* SYS_IMAGE_COUNT: number of directory entries, or -1 if the image is
- * invalid (header OR directory). */
-static uint32_t sys_image_count_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
-{
-    (void) a0;
-    (void) a1;
-    (void) a2;
-
-    if ( !image_valid() )
-        return (uint32_t) -1;
-    return image_header_count();
-}
-
-/* SYS_IMAGE_NAME: a0 = index, a1 = destination, a2 = capacity (1..16).
- * Copies the complete name with its NUL and returns 0; if it does not fit,
- * copies the first part, still ending with NUL, and returns -1. */
-static uint32_t sys_image_name_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
-{
-    uint32_t count = sys_image_count_impl( 0, 0, 0 );
-    if ( count == (uint32_t) -1 || a0 >= count )
-        return (uint32_t) -1;
-
-    if ( a2 < 1 || a2 > IMG_NAME_SIZE )
-        return (uint32_t) -1;
-
-    /* The kernel WRITES here: only the caller's own partition, never FLASH. */
-    const struct tcb *t = tcb_current;
-    if ( t != 0 && !in_range( a1, a2, t->part_start, t->part_end ) )
-        return (uint32_t) -1;
-
-    const char *src = img_entry( a0 )->name;
-    char *dst = (char *) a1;
-
-    for ( uint32_t i = 0; i < a2; i++ )
-    {
-        dst[i] = src[i];
-        if ( src[i] == '\0' )
-            return 0; /* the whole name, NUL included */
-    }
-
-    /* Capacity too small: truncate, still ending with NUL. */
-    dst[a2 - 1] = '\0';
-    return (uint32_t) -1;
-}
-
-/* ======================================================================
- * SYS_PROGRAM_RUN (SVC 13)
- * ====================================================================== */
-
-/* Copy the name at address a0 into the kernel buffer dst. Every byte read
- * must be readable by the caller. 0 = ok; -1 = empty, or no NUL within
- * IMG_NAME_SIZE bytes, or outside the caller's memory. */
-static int copy_name( uint32_t a0, char dst[IMG_NAME_SIZE] )
-{
-    const char *src = (const char *) a0;
-
-    for ( uint32_t i = 0; i < IMG_NAME_SIZE; i++ )
-    {
-        if ( !caller_can_read( a0, i + 1 ) )
-            return -1;
-        dst[i] = src[i];
-        if ( dst[i] == '\0' )
-            return i == 0 ? -1 : 0;
-    }
-    return -1;
-}
-
-/* The first free slot, in the order 0, 1, 2, 3, or -1. */
+/*trova il primo slot libero, restituisce -1 se sono tutti occupati */
+/*PROGRAM_SLOT_COUNT si trova in kernel/task.h*/
 static int first_free_slot( void )
 {
     for ( unsigned s = 0; s < PROGRAM_SLOT_COUNT; s++ )
@@ -446,58 +464,65 @@ static int first_free_slot( void )
     return -1;
 }
 
-/* a0 = name. Returns the task id, or -1 (bad name or image), -2 (not
- * found), -3 (no free slot), -4 (bad program file). Nothing is written into
- * the slot before every check has passed (R9). */
+/*ricontrolla il piano di Gianluigi e Athena. legge i byte de file e controlla che stiano in [0, size), poi controlla che i byte da 0 a copy_size da copiare e quelli azzerati da bss_start a bss_end siano nei limiti di 3072. alla fine controlla che l'intervallo nel bss abbia senso*/
+static int plan_inside_limits( const struct load_plan *p, uint32_t size )
+{
+    return p->file_off <= size && p->copy_size <= size - p->file_off && p->copy_size <= PROGRAM_MAX && p->bss_end <= PROGRAM_MAX && p->bss_start <= p->bss_end;
+}
+
 static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
 {
+    //a0 = nome del file che vogliamo runnare
     (void) a1;
     (void) a2;
-
-    char name[IMG_NAME_SIZE];
-    if ( copy_name( a0, name ) != 0 || !image_valid() )
+    /*copia il nome del programma, se è valido restituisce 0, con -1 abbiamo error: program cannot be loaded*/
+    char name[16];
+    if ( copy_name( a0, name ) != 0 )
         return (uint32_t) -1;
-
+    /*se l'immagine non è valida, restituisci -1 (la shell non distingue i due casi*/
+    if ( !image_valid() )
+        return (uint32_t) -1;
+    /*trovo l'entry dell'immagine (found) a partire dal name */
     const struct img_dirent *found = find_entry( name );
     if ( found == 0 )
         return (uint32_t) -2;
-
+    /*scelgo il primo slot libero e imposto i suoi parametri*/
     int slot = first_free_slot();
     if ( slot < 0 )
-        return (uint32_t) -3;
+        return (uint32_t) -3; /*error: no free slot*/
 
-    uint32_t slot_base = (uint32_t) __program_slots_start + (uint32_t) slot * LOADER_SLOT_SIZE;
-    const uint8_t *f = (const uint8_t *) &__fs_image_start + found->offset; /* the ELF, in FLASH */
-    uint32_t size = found->size;
+    /*slot_base è l'indirizzo dove inizia lo slot libero = indirizzo del primo slot + slot * 4096, spostandosi di 4096 byte per ogni slot*/
+    uint32_t slot_base = (uint32_t) __program_slots_start + (uint32_t) slot * SLOT_SIZE;
+    /*f punta all'elf direttamente in FLASH. prende il primo byte dell'immagine e avanza di offset byte*/
+    const uint8_t *f = (const uint8_t *) &__fs_image_start + found->offset;
+    uint32_t size = found->size; /*dimensione dell'immagine*/
 
-    /* Layers 2 and 3: every check, nothing written yet. elf_check_layout
-     * already guarantees that the plan fits in the file and in 3072 bytes. */
+     /*crea il piano nello staco del kernel e mette a zero tutti i campi */
+     /*controlla i piani di Gianluigi e Athena*/
     struct load_plan plan = { 0 };
-    if ( elf_check_layout( f, size, &plan ) != 0
-         || elf_check_relocs( f, size, &plan, slot_base ) != 0 )
+    if ( elf_check_layout( f, size, &plan ) != 0 )
+        return (uint32_t) -4;
+    if ( elf_check_relocs( f, size, &plan, slot_base ) != 0 )
+        return (uint32_t) -4;
+    if ( !plan_inside_limits( &plan, size ) )
         return (uint32_t) -4;
 
-    /* Layer 4: copy code and data, zero the BSS, relocate. */
+     /*questi controlli sono necessari per la copia di dati e azzeramento bss*/
     uint8_t *dst = (uint8_t *) slot_base;
     for ( uint32_t i = 0; i < plan.copy_size; i++ )
         dst[i] = f[plan.file_off + i];
     for ( uint32_t i = plan.bss_start; i < plan.bss_end; i++ )
         dst[i] = 0;
     elf_apply_relocs( f, slot_base );
-
-    /* Layer 5: the task, with the stack at the end of the slot. */
-    int id = task_program_create( (unsigned) slot, name,
-                                  ( void ( * )( void ) )( slot_base + plan.entry ),
-                                  (uint32_t *) ( slot_base + LOADER_SLOT_SIZE ),
-                                  LOADER_EXECUTABLE );
+     /*creazione del task*/
+     /*executable (1) è il flag che task_switch_context passa a mpu_set_task_region. a 1 la regione ram del task è eseguibile, a 0 no. il valore giusto di executable dipende dalla MPU che scrive Giulio*/
+    int id = task_program_create( (unsigned) slot, name, ( void ( * )( void ) )( slot_base + plan.entry ), (uint32_t *) ( slot_base + SLOT_SIZE ), LOADER_EXECUTABLE );
     if ( id < 0 )
         return (uint32_t) -4;
 
-    /* W^X: the MPU makes [0, code_end) read + execute, the rest read + write. */
     task_program_set_code_size( (unsigned) slot, plan.code_end );
     return (uint32_t) id;
 }
-
 /* The dispatch table: table[n] is the function for service n.
  * The [SYS_WRITE] = ... form puts each entry at its number, whatever
  * the order of the lines. Entry 0 is left empty (0): it is not a

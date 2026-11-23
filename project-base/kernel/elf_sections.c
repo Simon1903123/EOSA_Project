@@ -1,6 +1,4 @@
-/* kernel/elf_sections.c - section checks, code_end and entry (Athena).
- * Second half of elf_check_layout(); constants and helpers come from
- * kernel/elf_internal.h. */
+/* kernel/elf_sections.c - section checks and code_end (Athena). */
 #include "kernel/elf_internal.h"
 
 void elf_get_shdr( const uint8_t *f, uint32_t shoff, uint32_t i,
@@ -8,14 +6,14 @@ void elf_get_shdr( const uint8_t *f, uint32_t shoff, uint32_t i,
 {
     const uint8_t *r = f + shoff + i * ELF_SHDR_SIZE;
 
-    sh->type = elf_read32( r + SH_TYPE );
-    sh->flags = elf_read32( r + SH_FLAGS );
-    sh->addr = elf_read32( r + SH_ADDR );
-    sh->offset = elf_read32( r + SH_OFFSET );
-    sh->size = elf_read32( r + SH_SIZE );
-    sh->link = elf_read32( r + SH_LINK );
-    sh->info = elf_read32( r + SH_INFO );
-    sh->entsize = elf_read32( r + SH_ENTSIZE );
+    sh->type = elf_read32( r + 4 );
+    sh->flags = elf_read32( r + 8 );
+    sh->addr = elf_read32( r + 12 );
+    sh->offset = elf_read32( r + 16 );
+    sh->size = elf_read32( r + 20 );
+    sh->link = elf_read32( r + 24 );
+    sh->info = elf_read32( r + 28 );
+    sh->entsize = elf_read32( r + 36 );
 }
 
 int elf_check_sections( const struct elf_view *v, struct load_plan *p )
@@ -107,11 +105,10 @@ int elf_check_sections( const struct elf_view *v, struct load_plan *p )
         return -4;
     }
 
-    /* la prima area scrivibile deve iniziare in una sottoregione MPU da
-       512 B diversa da quella dove finisce il codice, così W^X vale a
-       livello di sottoregione (vedi mpu_set_program_regions) */
-    if ( first_writable_addr != 0xFFFFFFFFu
-         && first_writable_addr < ( ( code_end + ELF_WX_GRANULE - 1u ) & ~( ELF_WX_GRANULE - 1u ) ) )
+    /*la prima area scrivibile deve iniziare in una regione da 512 B
+       diversa da quella dove finisce il codice, così W^X vale a livello
+       di regione */
+    if ( first_writable_addr != 0xFFFFFFFFu && first_writable_addr < ( ( code_end + 511u ) & ~511u ) )
     {
         return -4;
     }
