@@ -497,13 +497,8 @@ static uint32_t sys_program_run_impl( uint32_t a0, uint32_t a1, uint32_t a2 )
      if ( id < 0 )
      	return ( uint32_t ) -4;
 
-     /*quando Giulio aggiunge il campo a struct tcb in task.h, togli il commento*/
-     tasks[PROGRAM_TASK_FIRST + slot].code_end = plan.code_end
+	 task_program_set_code_size( (unsigned) slot, plan.code_end );
      return ( uint32_t ) id;
-
-
-
-    return (uint32_t)-1; /* Temporaneo, in attesa del codice del tuo compagno */
 }
 /* The dispatch table: table[n] is the function for service n.
  * The [SYS_WRITE] = ... form puts each entry at its number, whatever
